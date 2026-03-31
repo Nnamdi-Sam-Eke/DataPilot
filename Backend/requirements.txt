@@ -8,3 +8,4 @@ seaborn
 scikit-learn
 groq
 python-dotenv
+chardet
