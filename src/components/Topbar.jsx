@@ -110,8 +110,8 @@ export default function Topbar({ page, onMenuClick }) {
             {backendOnline ? "Backend online" : "Backend offline"}
           </span>
         </div>
-
-        <div className="topbar-btn" title="Search">
+                 {/* Notification page icon for v2 */}
+        {/* <div className="topbar-btn" title="Search">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path d={Icons.search} />
           </svg>
@@ -121,7 +121,7 @@ export default function Topbar({ page, onMenuClick }) {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path d={Icons.bell} />
           </svg>
-        </div>
+        </div> */}
 
         <div className="topbar-avatar-wrap" ref={menuRef}>
           <button

@@ -55,7 +55,7 @@ export default function Sidebar({ page, setPage, isOpen }) {
           </div>
         ))}
       </div>
-      <div className="sidebar-footer">
+      <div className="sidebar-footer mb-8">
         <div className="user-chip">
           <div className="avatar">{avatarLetter}</div>
           <div><div className="user-name">{displayName}</div><div className="user-role">{plan} Plan</div></div>

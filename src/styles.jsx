@@ -196,6 +196,7 @@ export const styles = `
     margin-top: auto;
     padding: 14px 12px;
     border-top: 1px solid var(--border);
+    display: none;
   }
 
   .user-chip {
@@ -987,8 +988,15 @@ export const styles = `
       min-width: 240px !important;
       transform: translateX(-100%);
       transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+      overflow-y: auto;
     }
     .sidebar.open { transform: translateX(0); box-shadow: 6px 0 40px rgba(0,0,0,0.6); }
+    .sidebar-footer {
+      display: flex;
+      padding: 14px 12px;
+      padding-bottom: env(safe-area-inset-bottom, 24px);
+      margin-bottom: 16px;
+    }
     .main-area { width: 100% !important; flex: 1 1 100% !important; min-width: 0; overflow-x: hidden; }
     .app-wrap { overflow-x: hidden; }
     .topbar { padding: 0 12px; gap: 8px; }

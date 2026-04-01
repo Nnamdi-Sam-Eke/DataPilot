@@ -464,8 +464,9 @@ export default function PageDashboard({ setPage }) {
         ))}
       </div>
 
-      <div className="grid-2 dashboard-panels fade-up fade-up-1">
-        <div className="card" style={{ minWidth: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+    <div className="grid-2 dashboard-panels fade-up fade-up-1">
+        {/* Merged & Improved Recent Projects & Datasets Card */}
+        <div className="card" style={{ minWidth: 0, overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: 380 }}>
           <div className="card-title">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d={Icons.layers} />
@@ -479,14 +480,25 @@ export default function PageDashboard({ setPage }) {
             )}
           </div>
 
-          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, paddingRight: 4, paddingBottom: 4 }}>
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+              paddingRight: 4,
+              paddingBottom: 4,
+              scrollbarGutter: "stable",
+            }}
+          >
             {loading && projects.length === 0 && datasets.length === 0 ? (
               Array.from({ length: 3 }).map((_, index) => (
-                <div key={index} className="skeleton" style={{ height: 52, borderRadius: 9 }} />
+                <div key={index} className="skeleton" style={{ height: 52, borderRadius: 9, flexShrink: 0 }} />
               ))
             ) : (
               <>
-                {projects.slice(0, 6).map((project) => {
+                {projects.map((project) => {
                   const linkedDatasets = projectDatasetMap.get(project.id) || [];
                   const expiry = getProjectExpiry(linkedDatasets, sessionMap);
 
@@ -501,11 +513,19 @@ export default function PageDashboard({ setPage }) {
                         padding: "10px 12px",
                         background: "var(--bg3)",
                         borderRadius: 9,
-                        border: `1px solid ${expiry.allExpired ? "rgba(248,113,113,0.25)" : expiry.someExpired ? "rgba(251,191,36,0.28)" : "var(--border)"}`,
+                        border: `1px solid ${
+                          expiry.allExpired
+                            ? "rgba(248,113,113,0.25)"
+                            : expiry.someExpired
+                            ? "rgba(251,191,36,0.28)"
+                            : "var(--border)"
+                        }`,
                         cursor: "pointer",
                         transition: "all 0.15s",
                         minWidth: 0,
                         overflow: "hidden",
+                        flexShrink: 0,
+                        marginBottom: 10,
                       }}
                       onMouseEnter={(event) => {
                         event.currentTarget.style.borderColor = expiry.allExpired
@@ -522,7 +542,19 @@ export default function PageDashboard({ setPage }) {
                           : "var(--border)";
                       }}
                     >
-                      <div style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, background: "var(--accent-dim)", border: "1px solid rgba(108,99,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 8,
+                          flexShrink: 0,
+                          background: "var(--accent-dim)",
+                          border: "1px solid rgba(108,99,255,0.2)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d={Icons.layers} />
                         </svg>
@@ -530,7 +562,16 @@ export default function PageDashboard({ setPage }) {
 
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <div
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 500,
+                              color: "var(--text)",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
                             {project.name}
                           </div>
                           {expiry.allExpired ? (
@@ -539,7 +580,17 @@ export default function PageDashboard({ setPage }) {
                             <span className="tag tag-amber" style={{ flexShrink: 0 }}>Some Expired</span>
                           ) : null}
                         </div>
-                        <div style={{ fontSize: 10.5, color: "var(--text3)", fontFamily: "'DM Mono', monospace", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <div
+                          style={{
+                            fontSize: 10.5,
+                            color: "var(--text3)",
+                            fontFamily: "'DM Mono', monospace",
+                            marginTop: 1,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
                           {linkedDatasets.length} dataset{linkedDatasets.length !== 1 ? "s" : ""} · Created {formatDate(project.createdAt)}
                         </div>
                       </div>
@@ -553,7 +604,6 @@ export default function PageDashboard({ setPage }) {
 
                 {standaloneDatasets
                   .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
-                  .slice(0, 8)
                   .map((dataset) => (
                     <div
                       key={dataset.id}
@@ -567,25 +617,63 @@ export default function PageDashboard({ setPage }) {
                         border: `1px solid ${dataset.isExpired ? "rgba(248,113,113,0.25)" : "var(--border)"}`,
                         minWidth: 0,
                         overflow: "hidden",
+                        flexShrink: 0,
+                        marginBottom: 10,
                       }}
                     >
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: dataset.isExpired ? "var(--red)" : "var(--green)", flexShrink: 0 }} />
+                      <div
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: dataset.isExpired ? "var(--red)" : "var(--green)",
+                          flexShrink: 0,
+                        }}
+                      />
 
                       <div onClick={() => handleOpenDataset(dataset)} style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <div
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 500,
+                              color: "var(--text)",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
                             {dataset.fileName}
                           </div>
                           <span className={`tag ${dataset.isExpired ? "tag-red" : "tag-green"}`} style={{ flexShrink: 0 }}>
                             {dataset.isExpired ? "Expired" : "Active"}
                           </span>
                         </div>
-                        <div style={{ fontSize: 10.5, color: "var(--text3)", fontFamily: "'DM Mono', monospace", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <div
+                          style={{
+                            fontSize: 10.5,
+                            color: "var(--text3)",
+                            fontFamily: "'DM Mono', monospace",
+                            marginTop: 1,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
                           {dataset.rowCount?.toLocaleString()} rows · {timeAgo(dataset.createdAt)}
                         </div>
                       </div>
 
-                      <span className={`tag ${TAG_CLASS[dataset.tag] || "tag-blue"}`} style={{ flexShrink: 0, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <span
+                        className={`tag ${TAG_CLASS[dataset.tag] || "tag-blue"}`}
+                        style={{
+                          flexShrink: 0,
+                          maxWidth: 80,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         {dataset.tag || "Dataset"}
                       </span>
 
@@ -623,7 +711,10 @@ export default function PageDashboard({ setPage }) {
 
                 {projects.length === 0 && standaloneDatasets.length === 0 && (
                   <div style={{ fontSize: 12, color: "var(--text3)", textAlign: "center", padding: "40px 0" }}>
-                    No projects or standalone datasets yet. <span style={{ color: "var(--accent2)", cursor: "pointer" }} onClick={() => setShowNewProject(true)}>Create your first project →</span>
+                    No projects or standalone datasets yet.{" "}
+                    <span style={{ color: "var(--accent2)", cursor: "pointer" }} onClick={() => setShowNewProject(true)}>
+                      Create your first project →
+                    </span>
                   </div>
                 )}
               </>
@@ -631,7 +722,8 @@ export default function PageDashboard({ setPage }) {
           </div>
         </div>
 
-        <div className="card" style={{ minWidth: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        {/* Recent Activity Card (unchanged) */}
+        <div className="card" style={{ minWidth: 0, overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: 380 }}>
           <div className="card-title">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d={Icons.predict} />
@@ -639,33 +731,31 @@ export default function PageDashboard({ setPage }) {
             Recent Activity
           </div>
 
-          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 0, paddingRight: 4, paddingBottom: 4 }}>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", paddingRight: 4, paddingBottom: 4 }}>
             {activity.length === 0 ? (
               <div style={{ fontSize: 12, color: "var(--text3)", textAlign: "center", padding: "40px 0" }}>
                 No activity yet. Actions you take will appear here.
               </div>
             ) : (
-              activity.slice(0, 4).map((item, index) => (
+              activity.map((item, index) => (
                 <div
                   key={item.id}
                   className="activity-row"
                   style={{
                     display: "flex",
+                    alignItems: "center",
                     gap: 12,
-                    padding: "10px 0",
-                    borderBottom: index < Math.min(activity.length, 12) - 1 ? "1px solid var(--border)" : "none",
+                    padding: "10px 2px",
+                    borderBottom: index < activity.length - 1 ? "1px solid var(--border)" : "none",
                     minWidth: 0,
-                    overflow: "hidden",
                   }}
                 >
-                  <div style={{ width: 28, height: 28, borderRadius: 8, background: `${item.color}18`, border: `1px solid ${item.color}30`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: item.color }} />
-                  </div>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: item.color, flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {item.action}
                     </div>
-                    <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {item.detail}
                     </div>
                   </div>
