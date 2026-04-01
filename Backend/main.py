@@ -53,11 +53,13 @@ async def cleanup_expired_sessions():
     """Background task to cleanup expired sessions"""
     while True:
         try:
-            from routers.upload import DATA_CACHE, EXPIRY_MINUTES
+            from routers.upload import DATA_CACHE
             
             expired = [
                 sid for sid, session in DATA_CACHE.items()
-                if datetime.utcnow() - session["created_at"] > timedelta(minutes=EXPIRY_MINUTES)
+                if datetime.utcnow() - session["created_at"] > timedelta(
+                    minutes=session.get("expiry_minutes", 180)
+                )
             ]
             
             for sid in expired:
@@ -324,7 +326,8 @@ async def cache_stats():
     total_memory = 0
     
     for session_id, session in DATA_CACHE.items():
-        if datetime.utcnow() - session["created_at"] > timedelta(minutes=EXPIRY_MINUTES):
+        expiry_min = session.get("expiry_minutes", EXPIRY_MINUTES)
+        if datetime.utcnow() - session["created_at"] > timedelta(minutes=expiry_min):
             expired_sessions += 1
         else:
             active_sessions += 1

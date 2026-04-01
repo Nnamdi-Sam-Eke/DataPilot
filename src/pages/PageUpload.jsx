@@ -4,9 +4,31 @@ import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";
 import { saveDataset, findExistingDataset } from "../services/firestore";
 import { logActivity } from "../services/dashboard";
 
+// ── per-session expiry label hook ─────────────────────────────────────────
+function useSessionExpiryLabels(sessions) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(iv);
+  }, []);
+
+  return sessions.map((s) => {
+    if (s.expired || !s.uploadedAt) return null;
+    const expiryMinutes = s.expiryMinutes || 180;
+    const expiresMs = new Date(s.uploadedAt).getTime() + expiryMinutes * 60 * 1000;
+    const mins = Math.floor((expiresMs - Date.now()) / 60000);
+    if (mins <= 0) return null;
+    if (mins < 60) return { label: `${mins}m left`, urgent: mins <= 10, warning: mins <= 30 };
+    const hrs = Math.floor(mins / 60);
+    const rem = mins % 60;
+    return { label: rem > 0 ? `${hrs}h ${rem}m left` : `${hrs}h left`, urgent: false, warning: false };
+  });
+}
+
 export default function PageUpload({ setPage }) {
   const {
     user,
+    userProfile,
     sessions,
     addSession,
     removeSession,
@@ -116,7 +138,8 @@ export default function PageUpload({ setPage }) {
       const fd = new FormData();
       fd.append("file", file);
 
-      const res = await fetch(`${API_BASE}/upload`, {
+      const plan = (userProfile?.plan || "free").toLowerCase();
+      const res = await fetch(`${API_BASE}/upload?plan=${plan}`, {
         method: "POST",
         body: fd,
       });
@@ -151,6 +174,8 @@ export default function PageUpload({ setPage }) {
         columns: data.columns || [],
         summary: data.summary || null,
         projectId: currentProjectId || null,   // ← tag session with its project
+        uploadedAt: data.uploaded_at || new Date().toISOString(),
+        expiryMinutes: data.expiry_minutes || 180,
         preview:
           data.sample && data.columns
             ? { columns: data.columns, rows: data.sample }
@@ -206,6 +231,7 @@ export default function PageUpload({ setPage }) {
   };
 
   const activeSession = activeIdx !== null ? sessions[activeIdx] : null;
+  const expiryLabels = useSessionExpiryLabels(sessions);
 
   // Expired session handler
   const handleReupload = () => {
@@ -512,13 +538,37 @@ export default function PageUpload({ setPage }) {
                         </div>
                       </div>
 
-                      {s.expired ? (
-                        <span className="tag tag-red">Expired</span>
-                      ) : isActive ? (
-                        <span className="tag tag-blue">Active</span>
-                      ) : (
-                        <span style={{ fontSize: 10.5, color: "var(--text3)" }}>Click to switch</span>
-                      )}
+                      {/* Status / expiry tag */}
+                      {(() => {
+                        if (s.expired) return <span className="tag tag-red">Expired</span>;
+                        const expiry = expiryLabels[realIdx];
+                        if (expiry?.urgent) return (
+                          <span className="tag tag-red" style={{ fontFamily: "'DM Mono', monospace" }}>
+                            ⏳ {expiry.label}
+                          </span>
+                        );
+                        if (expiry?.warning) return (
+                          <span className="tag" style={{
+                            background: "rgba(255,165,0,0.12)",
+                            color: "#ffa040",
+                            border: "1px solid rgba(255,165,0,0.3)",
+                            fontFamily: "'DM Mono', monospace",
+                          }}>
+                            ⏳ {expiry.label}
+                          </span>
+                        );
+                        if (isActive) return <span className="tag tag-blue">Active</span>;
+                        if (expiry) return (
+                          <span style={{
+                            fontSize: 10,
+                            color: "var(--text3)",
+                            fontFamily: "'DM Mono', monospace",
+                          }}>
+                            {expiry.label}
+                          </span>
+                        );
+                        return <span style={{ fontSize: 10.5, color: "var(--text3)" }}>Click to switch</span>;
+                      })()}
 
                       <button
                         onClick={(e) => {

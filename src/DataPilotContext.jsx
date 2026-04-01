@@ -207,6 +207,8 @@ const [cleanPromoted, setCleanPromotedRaw] = useState(p?.cleanPromoted || false)
           columns: d.columns || [],
           summary: d.summary || null,
           projectId: d.projectId || null,
+          uploadedAt: d.uploadedAt || null,
+          expiryMinutes: d.expiryMinutes || 180,
           preview: null,
         }));
 

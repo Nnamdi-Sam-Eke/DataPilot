@@ -134,6 +134,7 @@ const ThemeToggle = ({ isDark, onToggle }) => (
 export default function PageAuth() {
   const { signup, login } = useDataPilot();
 
+  // mode: "login" | "signup" | "reset"
   const [mode,      setMode]      = useState("login");
   const [firstName, setFirstName] = useState("");
   const [lastName,  setLastName]  = useState("");
@@ -141,22 +142,53 @@ export default function PageAuth() {
   const [password,  setPassword]  = useState("");
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState("");
-  const [resetSent, setResetSent] = useState(false);
 
-const handleForgotPassword = async () => {
-  if (!email.trim()) {
-    setError("Enter your email address first, then click Forgot password.");
-    return;
-  }
-  try {
-    await sendPasswordResetEmail(auth, email.trim());
-    setResetSent(true);
+  // ── reset-specific state ──────────────────────────────────────────────────
+  const [resetEmail,   setResetEmail]   = useState("");
+  const [resetSent,    setResetSent]    = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError,   setResetError]   = useState("");
+
+  const goToReset = () => {
+    // Pre-fill reset email from login field if the user already typed one
+    setResetEmail(email.trim());
+    setResetSent(false);
+    setResetError("");
     setError("");
-    setTimeout(() => setResetSent(false), 5000);
-  } catch (err) {
-    setError(err?.message || "Failed to send reset email.");
-  }
-};
+    setMode("reset");
+  };
+
+  const goBackToLogin = () => {
+    setMode("login");
+    setResetSent(false);
+    setResetError("");
+  };
+
+  const handleResetSubmit = async () => {
+    const addr = resetEmail.trim();
+    if (!addr) {
+      setResetError("Please enter your email address.");
+      return;
+    }
+    setResetLoading(true);
+    setResetError("");
+    try {
+      await sendPasswordResetEmail(auth, addr);
+      setResetSent(true);
+    } catch (err) {
+      // Firebase returns auth/user-not-found — give a neutral message so we
+      // don't confirm whether an account exists (security best practice)
+      const code = err?.code || "";
+      if (code === "auth/user-not-found" || code === "auth/invalid-email") {
+        // Still show success — don't reveal account existence
+        setResetSent(true);
+      } else {
+        setResetError(err?.message || "Failed to send reset email. Try again.");
+      }
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   // Theme state
   const [isDark, setIsDark] = useState(true);
@@ -184,6 +216,7 @@ const handleForgotPassword = async () => {
   const toggleTheme = () => setIsDark(!isDark);
 
   const isLogin = mode === "login";
+  const isReset = mode === "reset";
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -329,153 +362,318 @@ const handleForgotPassword = async () => {
             animation: "fadeSlideUp 0.6s ease 0.2s both",
           }}>
 
-            {/* header */}
-            <div style={{ marginBottom: 28 }}>
-              <h2 style={{
-                margin: 0, fontSize: 22, fontWeight: 700,
-                color: isDark ? "#e8eaf0" : "#111827",
-                fontFamily: "'Syne', sans-serif",
-                letterSpacing: "-0.01em",
-              }}>
-                {isLogin ? "Welcome back" : "Create your account"}
-              </h2>
-              <p style={{
-                marginTop: 6, marginBottom: 0, fontSize: 13,
-                color: isDark ? "#4a4f62" : "#6b7280",
-                fontFamily: "'DM Sans', sans-serif",
-              }}>
-                {isLogin
-                  ? "Sign in to continue your analysis workflow."
-                  : "Start analyzing data in minutes."}
-              </p>
-            </div>
-
-            {/* mode toggle */}
-            <div style={{
-              display: "flex", gap: 6, marginBottom: 24,
-              background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)",
-              border: isDark ? "1px solid rgba(255,255,255,0.07)" : "1px solid rgba(0,0,0,0.08)",
-              padding: 5, borderRadius: 12,
-            }}>
-              {["login", "signup"].map(m => (
-                <button key={m} type="button" onClick={() => { setMode(m); setError(""); }}
+            {/* ── RESET PASSWORD VIEW ── */}
+            {isReset ? (
+              <>
+                {/* back button */}
+                <button
+                  type="button"
+                  onClick={goBackToLogin}
                   style={{
-                    flex: 1, border: "none", borderRadius: 8,
-                    padding: "9px 12px", cursor: "pointer",
-                    fontFamily: "'DM Sans', sans-serif",
-                    fontSize: 13, fontWeight: 600,
-                    background: mode === m
-                      ? "linear-gradient(135deg, #6c63ff, #7c74ff)"
-                      : "transparent",
-                    color: mode === m ? "#fff" : (isDark ? "#4a4f62" : "#6b7280"),
-                    boxShadow: mode === m ? "0 2px 12px rgba(108,99,255,0.35)" : "none",
-                    transition: "all 0.2s",
-                  }}>
-                  {m === "login" ? "Sign In" : "Sign Up"}
+                    display: "flex", alignItems: "center", gap: 6,
+                    background: "none", border: "none", cursor: "pointer",
+                    color: isDark ? "#4a4f62" : "#6b7280",
+                    fontSize: 12.5, fontFamily: "'DM Sans', sans-serif",
+                    padding: 0, marginBottom: 24,
+                    transition: "color 0.15s",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.color = "#a78bfa"}
+                  onMouseLeave={e => e.currentTarget.style.color = isDark ? "#4a4f62" : "#6b7280"}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 12H5M12 5l-7 7 7 7" />
+                  </svg>
+                  Back to sign in
                 </button>
-              ))}
-            </div>
 
-            {/* form */}
-            <form onSubmit={handleSubmit}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {/* header */}
+                <div style={{ marginBottom: 28 }}>
+                  <h2 style={{
+                    margin: 0, fontSize: 22, fontWeight: 700,
+                    color: isDark ? "#e8eaf0" : "#111827",
+                    fontFamily: "'Syne', sans-serif",
+                    letterSpacing: "-0.01em",
+                  }}>
+                    Reset your password
+                  </h2>
+                  <p style={{
+                    marginTop: 6, marginBottom: 0, fontSize: 13,
+                    color: isDark ? "#4a4f62" : "#6b7280",
+                    fontFamily: "'DM Sans', sans-serif",
+                    lineHeight: 1.6,
+                  }}>
+                    Enter the email linked to your account and we'll send you a reset link.
+                  </p>
+                </div>
 
-                {!isLogin && (
-                  <div className="auth-input-row">
-                    <Field id="firstName" label="First Name" value={firstName}
-                      onChange={e => setFirstName(e.target.value)}
-                      placeholder="Alex" required={!isLogin} />
-                    <Field id="lastName" label="Last Name" value={lastName}
-                      onChange={e => setLastName(e.target.value)}
-                      placeholder="Morgan" required={!isLogin} />
-                  </div>
-                )}
-
-                <Field id="email" label="Email address" type="email"
-                  value={email} onChange={e => setEmail(e.target.value)}
-                  placeholder="you@example.com" required />
-
-                <Field id="password" label="Password" type="password"
-                  value={password} onChange={e => setPassword(e.target.value)}
-                  placeholder={isLogin ? "Enter your password" : "Min. 6 characters"}
-                  required minLength={6} />
-
-                {isLogin && (
-                  <div style={{ textAlign: "right", marginTop: -6 }}>
-                    <button type="button" onClick={handleForgotPassword} style={{
-  background: "none", border: "none", cursor: "pointer",
-  fontSize: 12, color: resetSent ? "#34d399" : "#6c63ff",
-  fontFamily: "'DM Sans', sans-serif",
-}}>
-  {resetSent ? "✓ Reset email sent" : "Forgot password?"}
-</button>
-                  </div>
-                )}
-
-                {error && (
+                {/* success state */}
+                {resetSent ? (
                   <div style={{
-                    padding: "11px 14px", borderRadius: 10,
-                    background: "rgba(248,113,113,0.08)",
-                    border: "1px solid rgba(248,113,113,0.2)",
-                    color: "#f87171", fontSize: 12.5,
-                    fontFamily: "'DM Sans', sans-serif",
-                    display: "flex", alignItems: "center", gap: 8,
+                    display: "flex", flexDirection: "column", alignItems: "center",
+                    gap: 16, padding: "32px 24px", textAlign: "center",
+                    background: "rgba(52,211,153,0.06)",
+                    border: "1px solid rgba(52,211,153,0.2)",
+                    borderRadius: 14,
                   }}>
-                    <span>⚠</span> {error}
+                    <div style={{
+                      width: 48, height: 48, borderRadius: 14,
+                      background: "rgba(52,211,153,0.1)",
+                      border: "1px solid rgba(52,211,153,0.25)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 22,
+                    }}>
+                      ✉️
+                    </div>
+                    <div>
+                      <div style={{
+                        fontSize: 15, fontWeight: 700,
+                        color: "#34d399",
+                        fontFamily: "'Syne', sans-serif",
+                        marginBottom: 8,
+                      }}>
+                        Check your inbox
+                      </div>
+                      <div style={{
+                        fontSize: 12.5, color: isDark ? "#4a4f62" : "#6b7280",
+                        fontFamily: "'DM Sans', sans-serif",
+                        lineHeight: 1.65,
+                      }}>
+                        If <strong style={{ color: isDark ? "#8b90a0" : "#374151" }}>{resetEmail}</strong> is
+                        registered, a password reset link is on its way.
+                        Check your spam folder if it doesn't arrive within a minute.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={goBackToLogin}
+                      style={{
+                        marginTop: 4, padding: "10px 20px",
+                        border: "1px solid rgba(52,211,153,0.3)",
+                        borderRadius: 9, background: "rgba(52,211,153,0.08)",
+                        color: "#34d399", fontWeight: 600, fontSize: 13,
+                        fontFamily: "'DM Sans', sans-serif",
+                        cursor: "pointer", transition: "all 0.2s",
+                      }}
+                    >
+                      Back to sign in
+                    </button>
+                  </div>
+                ) : (
+                  /* reset form */
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    <Field
+                      id="resetEmail"
+                      label="Email address"
+                      type="email"
+                      value={resetEmail}
+                      onChange={e => { setResetEmail(e.target.value); setResetError(""); }}
+                      placeholder="you@example.com"
+                    />
+
+                    {resetError && (
+                      <div style={{
+                        padding: "11px 14px", borderRadius: 10,
+                        background: "rgba(248,113,113,0.08)",
+                        border: "1px solid rgba(248,113,113,0.2)",
+                        color: "#f87171", fontSize: 12.5,
+                        fontFamily: "'DM Sans', sans-serif",
+                        display: "flex", alignItems: "center", gap: 8,
+                      }}>
+                        <span>⚠</span> {resetError}
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleResetSubmit}
+                      disabled={resetLoading}
+                      style={{
+                        marginTop: 4, padding: "13px 16px",
+                        border: "none", borderRadius: 10,
+                        background: resetLoading
+                          ? "rgba(108,99,255,0.5)"
+                          : "linear-gradient(135deg, #6c63ff 0%, #7c74ff 100%)",
+                        color: "#fff", fontWeight: 700, fontSize: 14,
+                        fontFamily: "'Syne', sans-serif",
+                        cursor: resetLoading ? "not-allowed" : "pointer",
+                        boxShadow: resetLoading ? "none" : "0 4px 20px rgba(108,99,255,0.4)",
+                        transition: "all 0.2s", letterSpacing: "0.01em",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                      }}
+                    >
+                      {resetLoading ? (
+                        <>
+                          <svg style={{ animation: "spin 0.8s linear infinite" }}
+                            width="14" height="14" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" strokeWidth="2.5">
+                            <path d="M21 12a9 9 0 11-6.219-8.56" />
+                          </svg>
+                          Sending…
+                        </>
+                      ) : (
+                        "Send reset link"
+                      )}
+                    </button>
                   </div>
                 )}
+              </>
+            ) : (
+              /* ── LOGIN / SIGNUP VIEW ── */
+              <>
+                {/* header */}
+                <div style={{ marginBottom: 28 }}>
+                  <h2 style={{
+                    margin: 0, fontSize: 22, fontWeight: 700,
+                    color: isDark ? "#e8eaf0" : "#111827",
+                    fontFamily: "'Syne', sans-serif",
+                    letterSpacing: "-0.01em",
+                  }}>
+                    {isLogin ? "Welcome back" : "Create your account"}
+                  </h2>
+                  <p style={{
+                    marginTop: 6, marginBottom: 0, fontSize: 13,
+                    color: isDark ? "#4a4f62" : "#6b7280",
+                    fontFamily: "'DM Sans', sans-serif",
+                  }}>
+                    {isLogin
+                      ? "Sign in to continue your analysis workflow."
+                      : "Start analyzing data in minutes."}
+                  </p>
+                </div>
 
-                <button type="submit" disabled={loading} style={{
-                  marginTop: 4, padding: "13px 16px",
-                  border: "none", borderRadius: 10,
-                  background: loading
-                    ? "rgba(108,99,255,0.5)"
-                    : "linear-gradient(135deg, #6c63ff 0%, #7c74ff 100%)",
-                  color: "#fff", fontWeight: 700, fontSize: 14,
-                  fontFamily: "'Syne', sans-serif",
-                  cursor: loading ? "not-allowed" : "pointer",
-                  boxShadow: loading ? "none" : "0 4px 20px rgba(108,99,255,0.4)",
-                  transition: "all 0.2s", letterSpacing: "0.01em",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                {/* mode toggle */}
+                <div style={{
+                  display: "flex", gap: 6, marginBottom: 24,
+                  background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)",
+                  border: isDark ? "1px solid rgba(255,255,255,0.07)" : "1px solid rgba(0,0,0,0.08)",
+                  padding: 5, borderRadius: 12,
                 }}>
-                  {loading ? (
-                    <>
-                      <svg style={{ animation: "spin 0.8s linear infinite" }}
-                        width="14" height="14" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" strokeWidth="2.5">
-                        <path d="M21 12a9 9 0 11-6.219-8.56" />
-                      </svg>
-                      {isLogin ? "Signing in…" : "Creating account…"}
-                    </>
-                  ) : (
-                    isLogin ? "Sign In to DataPilot" : "Create Account"
-                  )}
-                </button>
-
-              </div>
-            </form>
-
-            {/* footer note */}
-            <p style={{
-              marginTop: 22, fontSize: 11.5, color: isDark ? "#4a4f62" : "#6b7280",
-              textAlign: "center",
-              fontFamily: "'DM Mono', monospace", lineHeight: 1.6,
-            }}>
-              {isLogin
-                ? <>Don't have an account?{" "}
-                    <button type="button" onClick={() => { setMode("signup"); setError(""); }}
-                      style={{ background:"none", border:"none", cursor:"pointer", color:"#a78bfa", fontSize:11.5, fontFamily:"'DM Mono',monospace" }}>
-                      Sign up free
+                  {["login", "signup"].map(m => (
+                    <button key={m} type="button" onClick={() => { setMode(m); setError(""); }}
+                      style={{
+                        flex: 1, border: "none", borderRadius: 8,
+                        padding: "9px 12px", cursor: "pointer",
+                        fontFamily: "'DM Sans', sans-serif",
+                        fontSize: 13, fontWeight: 600,
+                        background: mode === m
+                          ? "linear-gradient(135deg, #6c63ff, #7c74ff)"
+                          : "transparent",
+                        color: mode === m ? "#fff" : (isDark ? "#4a4f62" : "#6b7280"),
+                        boxShadow: mode === m ? "0 2px 12px rgba(108,99,255,0.35)" : "none",
+                        transition: "all 0.2s",
+                      }}>
+                      {m === "login" ? "Sign In" : "Sign Up"}
                     </button>
-                  </>
-                : <>Already have an account?{" "}
-                    <button type="button" onClick={() => { setMode("login"); setError(""); }}
-                      style={{ background:"none", border:"none", cursor:"pointer", color:"#a78bfa", fontSize:11.5, fontFamily:"'DM Mono',monospace" }}>
-                      Sign in
+                  ))}
+                </div>
+
+                {/* form */}
+                <form onSubmit={handleSubmit}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+                    {!isLogin && (
+                      <div className="auth-input-row">
+                        <Field id="firstName" label="First Name" value={firstName}
+                          onChange={e => setFirstName(e.target.value)}
+                          placeholder="Alex" required={!isLogin} />
+                        <Field id="lastName" label="Last Name" value={lastName}
+                          onChange={e => setLastName(e.target.value)}
+                          placeholder="Morgan" required={!isLogin} />
+                      </div>
+                    )}
+
+                    <Field id="email" label="Email address" type="email"
+                      value={email} onChange={e => setEmail(e.target.value)}
+                      placeholder="you@example.com" required />
+
+                    <Field id="password" label="Password" type="password"
+                      value={password} onChange={e => setPassword(e.target.value)}
+                      placeholder={isLogin ? "Enter your password" : "Min. 6 characters"}
+                      required minLength={6} />
+
+                    {isLogin && (
+                      <div style={{ textAlign: "right", marginTop: -6 }}>
+                        <button type="button" onClick={goToReset} style={{
+                          background: "none", border: "none", cursor: "pointer",
+                          fontSize: 12, color: "#6c63ff",
+                          fontFamily: "'DM Sans', sans-serif",
+                          transition: "color 0.15s",
+                        }}
+                          onMouseEnter={e => e.currentTarget.style.color = "#a78bfa"}
+                          onMouseLeave={e => e.currentTarget.style.color = "#6c63ff"}
+                        >
+                          Forgot password?
+                        </button>
+                      </div>
+                    )}
+
+                    {error && (
+                      <div style={{
+                        padding: "11px 14px", borderRadius: 10,
+                        background: "rgba(248,113,113,0.08)",
+                        border: "1px solid rgba(248,113,113,0.2)",
+                        color: "#f87171", fontSize: 12.5,
+                        fontFamily: "'DM Sans', sans-serif",
+                        display: "flex", alignItems: "center", gap: 8,
+                      }}>
+                        <span>⚠</span> {error}
+                      </div>
+                    )}
+
+                    <button type="submit" disabled={loading} style={{
+                      marginTop: 4, padding: "13px 16px",
+                      border: "none", borderRadius: 10,
+                      background: loading
+                        ? "rgba(108,99,255,0.5)"
+                        : "linear-gradient(135deg, #6c63ff 0%, #7c74ff 100%)",
+                      color: "#fff", fontWeight: 700, fontSize: 14,
+                      fontFamily: "'Syne', sans-serif",
+                      cursor: loading ? "not-allowed" : "pointer",
+                      boxShadow: loading ? "none" : "0 4px 20px rgba(108,99,255,0.4)",
+                      transition: "all 0.2s", letterSpacing: "0.01em",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    }}>
+                      {loading ? (
+                        <>
+                          <svg style={{ animation: "spin 0.8s linear infinite" }}
+                            width="14" height="14" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" strokeWidth="2.5">
+                            <path d="M21 12a9 9 0 11-6.219-8.56" />
+                          </svg>
+                          {isLogin ? "Signing in…" : "Creating account…"}
+                        </>
+                      ) : (
+                        isLogin ? "Sign In to DataPilot" : "Create Account"
+                      )}
                     </button>
-                  </>
-              }
-            </p>
+
+                  </div>
+                </form>
+
+                {/* footer note */}
+                <p style={{
+                  marginTop: 22, fontSize: 11.5, color: isDark ? "#4a4f62" : "#6b7280",
+                  textAlign: "center",
+                  fontFamily: "'DM Mono', monospace", lineHeight: 1.6,
+                }}>
+                  {isLogin
+                    ? <>Don't have an account?{" "}
+                        <button type="button" onClick={() => { setMode("signup"); setError(""); }}
+                          style={{ background:"none", border:"none", cursor:"pointer", color:"#a78bfa", fontSize:11.5, fontFamily:"'DM Mono',monospace" }}>
+                          Sign up free
+                        </button>
+                      </>
+                    : <>Already have an account?{" "}
+                        <button type="button" onClick={() => { setMode("login"); setError(""); }}
+                          style={{ background:"none", border:"none", cursor:"pointer", color:"#a78bfa", fontSize:11.5, fontFamily:"'DM Mono',monospace" }}>
+                          Sign in
+                        </button>
+                      </>
+                  }
+                </p>
+              </>
+            )}
 
           </div>
         </div>

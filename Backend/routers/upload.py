@@ -14,7 +14,13 @@ router = APIRouter()
 
 # --- In-memory cache ---
 DATA_CACHE = {}
-EXPIRY_MINUTES = 180  # 3 hours
+EXPIRY_MINUTES = 180  # 3 hours (Free tier default — kept for cleanup_expired_sessions in main.py)
+
+# Plan → TTL in minutes
+PLAN_EXPIRY: Dict[str, int] = {
+    "free": 180,   # 3 hours
+    "pro":  1440,  # 24 hours
+}
 
 # --- Utility functions ---
 
@@ -38,11 +44,16 @@ READERS = {
     "application/json": pd.read_json
 }
 
-def create_session(df: pd.DataFrame) -> str:
+def create_session(df: pd.DataFrame, plan: str = "free") -> str:
     session_id = str(uuid.uuid4())
+    expiry_minutes = PLAN_EXPIRY.get(plan.lower(), PLAN_EXPIRY["free"])
+    now = datetime.utcnow()
     DATA_CACHE[session_id] = {
         "df": df,
-        "created_at": datetime.utcnow()
+        "created_at": now,
+        "uploaded_at": now.isoformat(),   # ISO string — returned to frontend
+        "expiry_minutes": expiry_minutes,
+        "plan": plan.lower(),
     }
     return session_id
 
@@ -50,7 +61,8 @@ def get_session(session_id: str):
     session = DATA_CACHE.get(session_id)
     if not session:
         return None
-    if datetime.utcnow() - session["created_at"] > timedelta(minutes=EXPIRY_MINUTES):
+    expiry_minutes = session.get("expiry_minutes", EXPIRY_MINUTES)
+    if datetime.utcnow() - session["created_at"] > timedelta(minutes=expiry_minutes):
         del DATA_CACHE[session_id]
         return None
     return session["df"]
@@ -130,7 +142,7 @@ def sanitize_for_json(obj):
     # last resort: convert to string
     return str(obj)
 
-async def process_file(file: UploadFile) -> Dict[str, Any]:
+async def process_file(file: UploadFile, plan: str = "free") -> Dict[str, Any]:
     """Process a single file safely, handle NaNs, parse dates, cache data."""
     if file.content_type not in READERS:
         return sanitize_for_json({"file_name": file.filename, "error": f"Unsupported file type: {file.content_type}"})
@@ -161,7 +173,8 @@ async def process_file(file: UploadFile) -> Dict[str, Any]:
     summary = generate_summary(df)
     columns = df.columns.tolist()
     sample_rows = df.head(5).to_dict(orient="records")
-    session_id = create_session(df)
+    session_id = create_session(df, plan=plan)
+    expiry_minutes = PLAN_EXPIRY.get(plan.lower(), PLAN_EXPIRY["free"])
 
     result = {
         "file_name": file.filename,
@@ -169,24 +182,26 @@ async def process_file(file: UploadFile) -> Dict[str, Any]:
         "columns": columns,
         "summary": summary,
         "sample": sample_rows,
-        "row_count": len(df)
+        "row_count": len(df),
+        "uploaded_at": DATA_CACHE[session_id]["uploaded_at"],
+        "expiry_minutes": expiry_minutes,
     }
 
     return sanitize_for_json(result)
 
 # --- API Routes ---
 @router.post("/upload")
-async def upload_endpoint(file: UploadFile):
-    return await process_file(file)
+async def upload_endpoint(file: UploadFile, plan: str = "free"):
+    return await process_file(file, plan=plan)
 
 @router.post("/batch_uploads")
-async def batch_uploads_endpoint(files: List[UploadFile]):
+async def batch_uploads_endpoint(files: List[UploadFile], plan: str = "free"):
     """
     Accepts multiple files in a single request (multipart/form-data).
     Returns a list of individual processing results.
     """
     results = []
     for f in files:
-        results.append(await process_file(f))
+        results.append(await process_file(f, plan=plan))
     # results are already sanitized in process_file
     return results
