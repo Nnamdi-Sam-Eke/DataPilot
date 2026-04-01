@@ -785,4 +785,10 @@ export function useDataPilot() {
   return ctx;
 }
 
-export const API_BASE = "http://localhost:8000";
+const isLocalhost =
+  typeof window !== "undefined" &&
+  window.location.hostname === "localhost";
+
+export const API_BASE = isLocalhost
+  ? "http://localhost:8000"
+  : "https://datapilot-mz5j.onrender.com";
