@@ -338,9 +338,9 @@ export default function PageOnboarding({ onStart, onSkip }) {
                   text="No environment to configure. Everything runs in your browser session."
                 />
                 <Tile
-                  emoji="✦"
-                  title="AI throughout"
-                  text="Ask questions, get summaries, and generate chart code at every stage."
+                  emoji="🧩"
+                  title="No setup required"
+                  text="Clean, visualize, and model your data without writing code or configuring environments."
                 />
               </div>
 
