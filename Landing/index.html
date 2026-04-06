@@ -11,7 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
+ 
 :root {
   --accent: #6c63ff;
   --accent2: #a78bfa;
@@ -31,9 +31,9 @@
   --glass: rgba(255,255,255,0.03);
   --glass2: rgba(255,255,255,0.06);
 }
-
+ 
 html { scroll-behavior: smooth; }
-
+ 
 body {
   font-family: 'DM Sans', sans-serif;
   background: var(--bg);
@@ -41,7 +41,7 @@ body {
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
 }
-
+ 
 body::before {
   content: '';
   position: fixed;
@@ -51,7 +51,7 @@ body::before {
   z-index: 0;
   opacity: 0.4;
 }
-
+ 
 .grid-bg {
   position: fixed;
   inset: 0;
@@ -62,12 +62,12 @@ body::before {
   pointer-events: none;
   z-index: 0;
 }
-
+ 
 .orb { position: fixed; border-radius: 50%; filter: blur(100px); pointer-events: none; z-index: 0; }
 .orb-1 { width: 600px; height: 600px; background: rgba(108,99,255,0.12); top: -200px; right: -100px; }
 .orb-2 { width: 500px; height: 500px; background: rgba(167,139,250,0.07); bottom: 10%; left: -150px; }
 .orb-3 { width: 300px; height: 300px; background: rgba(52,211,153,0.06); top: 50%; right: 15%; }
-
+ 
 /* ─── NAV ─── */
 nav {
   position: fixed;
@@ -82,7 +82,7 @@ nav {
   backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border);
 }
-
+ 
 .nav-logo {
   display: flex;
   align-items: center;
@@ -108,7 +108,7 @@ nav {
   letter-spacing: -0.3px;
 }
 .nav-logo-text span { color: var(--accent2); }
-
+ 
 .nav-links {
   display: flex;
   align-items: center;
@@ -123,14 +123,14 @@ nav {
   font-weight: 450;
 }
 .nav-links a:hover { color: var(--text); }
-
+ 
 .nav-cta {
   display: flex;
   gap: 8px;
   align-items: center;
   flex-shrink: 0;
 }
-
+ 
 /* ─── BUTTONS — all fluid via clamp() ─── */
 .btn-ghost {
   padding: 7px 15px;
@@ -151,7 +151,7 @@ nav {
   line-height: 1;
 }
 .btn-ghost:hover { background: rgba(108,99,255,0.08); border-color: var(--accent2); }
-
+ 
 .btn-primary-sm {
   padding: 7px 16px;
   border-radius: 8px;
@@ -172,7 +172,7 @@ nav {
   line-height: 1;
 }
 .btn-primary-sm:hover { transform: translateY(-1px); box-shadow: 0 4px 30px rgba(108,99,255,0.45); }
-
+ 
 /* ─── Secondary (middle-weight) button ─── */
 .btn-secondary {
   padding: 7px 16px;
@@ -192,12 +192,12 @@ nav {
   white-space: nowrap;
   line-height: 1;
 }
-
+ 
 .btn-secondary:hover {
   background: rgba(108,99,255,0.15);
   border-color: var(--accent2);
 }
-
+ 
 .btn-hero {
   padding: 13px 28px;
   border-radius: 12px;
@@ -220,7 +220,7 @@ nav {
 .btn-hero:hover { transform: translateY(-2px); box-shadow: 0 0 60px rgba(108,99,255,0.55), 0 8px 30px rgba(0,0,0,0.5); }
 .btn-hero svg { transition: transform 0.2s; flex-shrink: 0; }
 .btn-hero:hover svg { transform: translateX(3px); }
-
+ 
 .btn-hero-ghost {
   padding: 13px 24px;
   border-radius: 12px;
@@ -241,7 +241,7 @@ nav {
   line-height: 1;
 }
 .btn-hero-ghost:hover { color: var(--text); border-color: rgba(108,99,255,0.4); background: var(--glass2); }
-
+ 
 /* ─── HERO ─── */
 .hero {
   position: relative;
@@ -250,7 +250,7 @@ nav {
   max-width: 1200px;
   margin: 0 auto;
 }
-
+ 
 .hero-eyebrow {
   display: inline-flex;
   align-items: center;
@@ -272,12 +272,12 @@ nav {
   background: var(--accent3);
   animation: pulse 2s infinite;
 }
-
+ 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
-
+ 
 .hero-title {
   font-family: 'Syne', sans-serif;
   font-size: clamp(48px, 7vw, 88px);
@@ -296,7 +296,7 @@ nav {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
-
+ 
 .hero-sub {
   font-size: 18px;
   line-height: 1.7;
@@ -306,7 +306,7 @@ nav {
   font-weight: 400;
   animation: fadeUp 0.7s 0.2s ease both;
 }
-
+ 
 .hero-ctas {
   display: flex;
   gap: 12px;
@@ -314,7 +314,7 @@ nav {
   flex-wrap: wrap;
   animation: fadeUp 0.7s 0.3s ease both;
 }
-
+ 
 .hero-trust {
   margin-top: 56px;
   display: flex;
@@ -336,7 +336,7 @@ nav {
   font-family: 'Syne', sans-serif;
 }
 .hero-trust-avatar:first-child { margin-left: 0; }
-
+ 
 /* ─── HERO VISUAL ─── */
 .hero-visual {
   position: relative;
@@ -346,7 +346,7 @@ nav {
   padding: 0 48px 100px;
   animation: fadeUp 0.9s 0.4s ease both;
 }
-
+ 
 .dashboard-mockup {
   border-radius: 20px;
   background: var(--bg2);
@@ -355,7 +355,7 @@ nav {
   box-shadow: 0 0 0 1px rgba(108,99,255,0.1), 0 40px 120px rgba(0,0,0,0.6), 0 0 80px rgba(108,99,255,0.08);
   position: relative;
 }
-
+ 
 .mockup-topbar {
   display: flex;
   align-items: center;
@@ -372,9 +372,9 @@ nav {
 .mockup-title { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text3); }
 .mockup-status { display: flex; align-items: center; gap: 6px; font-family: 'DM Mono', monospace; font-size: 10px; color: var(--accent3); }
 .mockup-status-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent3); animation: pulse 2s infinite; }
-
+ 
 .mockup-body { display: grid; grid-template-columns: 180px 1fr; min-height: 380px; }
-
+ 
 .mockup-sidebar { background: rgba(8,12,24,0.6); border-right: 1px solid var(--border); padding: 16px 0; }
 .mockup-nav-section { padding: 0 12px; margin-bottom: 16px; }
 .mockup-nav-label { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.1em; padding: 0 8px; margin-bottom: 6px; }
@@ -382,68 +382,68 @@ nav {
 .mockup-nav-item.active { background: rgba(108,99,255,0.15); color: var(--accent2); }
 .mockup-nav-icon { width: 13px; height: 13px; border-radius: 3px; background: currentColor; opacity: 0.3; flex-shrink: 0; }
 .mockup-nav-item.active .mockup-nav-icon { opacity: 0.7; }
-
+ 
 .mockup-content { padding: 20px; display: flex; flex-direction: column; gap: 16px; overflow: hidden; }
-
+ 
 .mockup-stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
 .mockup-stat { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
 .mockup-stat-label { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
 .mockup-stat-val { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; }
 .mockup-stat-sub { font-size: 9px; color: var(--text3); margin-top: 2px; }
-
+ 
 .mockup-charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .mockup-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
 .mockup-card-title { font-family: 'DM Mono', monospace; font-size: 9.5px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 12px; }
-
+ 
 .bar-chart { display: flex; align-items: flex-end; gap: 5px; height: 70px; }
 .bar { flex: 1; border-radius: 4px 4px 0 0; background: linear-gradient(to top, var(--accent), var(--accent2)); opacity: 0.7; animation: barGrow 1s ease both; }
 @keyframes barGrow { from { transform: scaleY(0); transform-origin: bottom; } to { transform: scaleY(1); transform-origin: bottom; } }
 .bar:nth-child(1){animation-delay:0.1s}.bar:nth-child(2){animation-delay:0.15s}.bar:nth-child(3){animation-delay:0.2s}.bar:nth-child(4){animation-delay:0.25s}.bar:nth-child(5){animation-delay:0.3s}.bar:nth-child(6){animation-delay:0.35s}.bar:nth-child(7){animation-delay:0.4s}
-
+ 
 .ai-chat-preview { display: flex; flex-direction: column; gap: 8px; }
 .chat-msg { display: flex; gap: 8px; align-items: flex-start; }
 .chat-avatar-mini { width: 20px; height: 20px; border-radius: 6px; background: linear-gradient(135deg,var(--accent),var(--accent2)); display: flex; align-items: center; justify-content: center; font-size: 9px; color: #fff; flex-shrink: 0; font-weight: 700; }
 .chat-bubble-mini { padding: 6px 10px; border-radius: 8px; font-size: 10px; line-height: 1.5; max-width: 85%; }
 .chat-bubble-mini.ai { background: var(--bg4); color: var(--text2); border: 1px solid var(--border); }
 .chat-bubble-mini.user { background: rgba(108,99,255,0.15); color: var(--accent2); border: 1px solid rgba(108,99,255,0.2); margin-left: auto; }
-
+ 
 .mockup-glow { position: absolute; bottom: -60px; left: 50%; transform: translateX(-50%); width: 70%; height: 60px; background: rgba(108,99,255,0.25); filter: blur(40px); border-radius: 50%; }
-
+ 
 /* ─── SECTIONS ─── */
 section { position: relative; z-index: 1; }
 .container { max-width: 1200px; margin: 0 auto; padding: 0 48px; }
-
+ 
 .section-eyebrow { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--accent2); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 14px; }
 .section-title { font-family: 'Syne', sans-serif; font-size: clamp(30px, 4vw, 52px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.08; margin-bottom: 16px; color: var(--text); }
 .section-sub { font-size: 16px; color: var(--text2); line-height: 1.7; max-width: 500px; }
-
+ 
 /* ─── MARQUEE ─── */
 .marquee-section { padding: 0 0 80px; overflow: hidden; }
 .marquee-label { text-align: center; font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text3); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 28px; }
 .marquee-track { display: flex; overflow: hidden; mask-image: linear-gradient(to right, transparent, black 15%, black 85%, transparent); }
 .marquee-inner { display: flex; gap: 12px; animation: marquee 25s linear infinite; white-space: nowrap; flex-shrink: 0; }
 @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-
+ 
 /* ─── Pricing lock overlay styles ─── */
 .pricing-price { position: relative; min-height: 44px; display: flex; align-items: center; gap: 10px; }
 .pricing-price-ghost { color: rgba(255,255,255,0.06); filter: blur(2px); user-select: none; -webkit-user-select: none; pointer-events: none; font-weight: 700; font-size: 28px; }
 .pricing-price-ghost sup { font-size: 14px; vertical-align: super; opacity: 0.06; }
 .pricing-price-label { color: var(--text2); font-size: 15px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
 .pricing-lock-pill { display: inline-flex; align-items: center; gap: 8px; font-family: 'DM Mono', monospace; font-size: 12px; padding: 6px 10px; border-radius: 999px; background: rgba(8,10,18,0.6); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border: 1px solid rgba(167,139,250,0.12); color: var(--accent2); }
-
+ 
 /* stronger tint for featured card so overlay reads as intentional */
 .pricing-card.featured .pricing-lock-pill { background: rgba(20,18,36,0.75); border-color: rgba(108,99,255,0.22); }
-
+ 
 /* ensure ghost numbers don't get announced by assistive tech */
 /* aria-hidden on the ghost element prevents screen readers from announcing it */
 .marquee-chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 16px; border-radius: 100px; background: var(--bg3); border: 1px solid var(--border); font-size: 12px; color: var(--text2); white-space: nowrap; flex-shrink: 0; }
 .marquee-chip-dot { width: 6px; height: 6px; border-radius: 50%; }
-
+ 
 /* Small utility notes used between sections for extra spacing */
 .marquee-note-center { text-align: center; color: var(--text2); margin: 20px 0 36px; font-size: 16px; }
 .marquee-note { text-align: center; color: var(--text2); margin: 18px 0 28px; font-size: 15px; }
 .pricing-note { text-align: center; color: var(--text2); margin: 20px 0 48px; font-size: 15px; }
-
+ 
 /* ─── HOW IT WORKS ─── */
 .how-section { padding: 100px 0; }
 .how-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; margin-top: 64px; position: relative; }
@@ -453,7 +453,7 @@ section { position: relative; z-index: 1; }
 .how-step-icon { width: 48px; height: 48px; border-radius: 12px; background: rgba(108,99,255,0.1); border: 1px solid rgba(108,99,255,0.2); display: flex; align-items: center; justify-content: center; margin-bottom: 20px; }
 .how-step-title { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 10px; letter-spacing: -0.3px; }
 .how-step-desc { font-size: 13px; color: var(--text2); line-height: 1.65; }
-
+ 
 /* ─── FEATURES ─── */
 .features-section { padding: 100px 0; }
 .features-header { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: end; margin-bottom: 56px; }
@@ -467,7 +467,7 @@ section { position: relative; z-index: 1; }
 .feature-title { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 10px; letter-spacing: -0.3px; }
 .feature-desc { font-size: 13.5px; color: var(--text2); line-height: 1.65; }
 .feature-tag { display: inline-block; margin-top: 16px; padding: 3px 10px; border-radius: 100px; font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.05em; }
-
+ 
 /* ─── AI CHAT ─── */
 .ai-section { padding: 100px 0; }
 .ai-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
@@ -491,22 +491,115 @@ section { position: relative; z-index: 1; }
 .ai-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 32px; }
 .ai-pill { padding: 7px 14px; border-radius: 100px; background: var(--bg3); border: 1px solid var(--border); font-size: 12px; color: var(--text2); cursor: pointer; transition: all 0.15s; font-family: 'DM Mono', monospace; }
 .ai-pill:hover { border-color: var(--border2); color: var(--accent2); }
-
+ 
 /* ─── METRICS ─── */
 .metrics-section { padding: 80px 0; }
 .metrics-inner { background: linear-gradient(135deg, rgba(108,99,255,0.08), rgba(167,139,250,0.05)); border: 1px solid rgba(108,99,255,0.15); border-radius: 24px; padding: 64px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 48px; text-align: center; position: relative; overflow: hidden; }
 .metrics-inner::before { content: ''; position: absolute; top: -50px; left: 50%; transform: translateX(-50%); width: 400px; height: 200px; background: rgba(108,99,255,0.1); filter: blur(60px); border-radius: 50%; }
 .metric-val { font-family: 'Syne', sans-serif; font-size: 48px; font-weight: 800; letter-spacing: -2px; background: linear-gradient(135deg, var(--text), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 6px; }
 .metric-label { font-size: 13px; color: var(--text3); font-weight: 500; }
-
+ 
 /* ─── PRICING ─── */
+.pricing-note {
+  text-align: center;
+  color: var(--text2);
+  margin: 20px 0 48px;
+  font-size: 14px;
+
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(108,99,255,0.08);
+  border: 1px solid rgba(108,99,255,0.18);
+
+  display: inline-block;
+}
 .pricing-section { padding: 100px 0; }
 .pricing-header { text-align: center; margin-bottom: 56px; }
 .pricing-header .section-sub { margin: 0 auto; }
 .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; max-width: 900px; margin: 0 auto; }
+.pricing-grid--beta { grid-template-columns: 1fr 1.5fr; max-width: 820px; align-items: stretch; }
 .pricing-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 20px; padding: 32px; position: relative; transition: all 0.25s; }
 .pricing-card:hover { transform: translateY(-4px); }
 .pricing-card.featured { background: linear-gradient(160deg, rgba(108,99,255,0.12), rgba(108,99,255,0.06)); border-color: rgba(108,99,255,0.35); box-shadow: 0 0 60px rgba(108,99,255,0.1); }
+ 
+/* Paid plans teaser panel */
+.pricing-teaser {
+  background: linear-gradient(140deg, rgba(108,99,255,0.08) 0%, rgba(167,139,250,0.04) 60%, rgba(52,211,153,0.03) 100%);
+  border: 1px solid rgba(108,99,255,0.2);
+  border-radius: 20px;
+  padding: 36px 36px 32px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 20px;
+  position: relative;
+  overflow: hidden;
+}
+.pricing-teaser::before {
+  content: '';
+  position: absolute;
+  top: -60px; right: -60px;
+  width: 200px; height: 200px;
+  background: radial-gradient(circle, rgba(108,99,255,0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+.pricing-teaser-plans {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.pricing-teaser-plan {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px;
+  padding: 6px 14px;
+}
+.pricing-teaser-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent2);
+}
+.pricing-teaser-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--accent2);
+  opacity: 0.4;
+}
+.pricing-teaser-divider {
+  font-family: 'Syne', sans-serif;
+  font-size: 18px;
+  color: var(--text3);
+  font-weight: 300;
+}
+.pricing-teaser-headline {
+  font-family: 'Syne', sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--text);
+  line-height: 1.2;
+}
+.pricing-teaser-body {
+  font-size: 13.5px;
+  color: var(--text2);
+  line-height: 1.65;
+  max-width: 380px;
+}
+.pricing-teaser-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  text-decoration: none;
+  border-radius: 10px;
+  font-size: 13.5px;
+}
 .pricing-badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); padding: 4px 14px; border-radius: 100px; background: linear-gradient(135deg, var(--accent), var(--accent2)); font-size: 10px; font-weight: 700; color: #fff; white-space: nowrap; font-family: 'DM Mono', monospace; letter-spacing: 0.05em; }
 .pricing-plan { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text3); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 12px; }
 .pricing-price { font-family: 'Syne', sans-serif; font-size: 42px; font-weight: 800; letter-spacing: -2px; color: var(--text); margin-bottom: 4px; }
@@ -521,7 +614,7 @@ section { position: relative; z-index: 1; }
 .pricing-btn-outline:hover { background: rgba(108,99,255,0.08); }
 .pricing-btn-filled { background: linear-gradient(135deg, var(--accent), #7c3aed); border: none; color: #fff; box-shadow: 0 0 30px rgba(108,99,255,0.35); }
 .pricing-btn-filled:hover { box-shadow: 0 0 50px rgba(108,99,255,0.5); transform: translateY(-1px); }
-
+ 
 /* ─── CTA ─── */
 .cta-section { padding: 80px 0 120px; }
 .cta-inner { text-align: center; position: relative; padding: 80px 48px; border-radius: 28px; background: linear-gradient(160deg, var(--bg2), var(--bg3)); border: 1px solid var(--border); overflow: hidden; }
@@ -530,14 +623,14 @@ section { position: relative; z-index: 1; }
 .cta-title { font-family: 'Syne', sans-serif; font-size: clamp(32px, 5vw, 62px); font-weight: 800; letter-spacing: -2px; line-height: 1.05; margin-bottom: 20px; color: var(--text); }
 .cta-sub { font-size: 16px; color: var(--text2); max-width: 460px; margin: 0 auto 40px; line-height: 1.6; }
 .cta-ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-
+ 
 /* ─── FOOTER ─── */
 footer { position: relative; z-index: 1; border-top: 1px solid var(--border); padding: 48px; display: flex; align-items: center; justify-content: space-between; max-width: 1200px; margin: 0 auto; flex-wrap: wrap; gap: 24px; }
 .footer-copy { font-size: 12px; color: var(--text3); }
 .footer-links { display: flex; gap: 24px; flex-wrap: wrap; }
 .footer-links a { font-size: 12px; color: var(--text3); text-decoration: none; transition: color 0.2s; }
 .footer-links a:hover { color: var(--text2); }
-
+ 
 /* ─── ANIMATIONS ─── */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(24px); }
@@ -545,54 +638,55 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
 }
 .fade-up { opacity: 0; transform: translateY(30px); transition: opacity 0.6s ease, transform 0.6s ease; }
 .fade-up.visible { opacity: 1; transform: translateY(0); }
-
+ 
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text3); }
-
+ 
 /* ════════════════════════════════════════
    RESPONSIVE
    ════════════════════════════════════════ */
-
+ 
 /* ── Tablet ── */
 @media (max-width: 900px) {
   nav { padding: 0 24px; }
   .nav-links { display: none; }
   .nav-cta { gap: 8px; }
-
+ 
   .hero { padding: 110px 24px 80px; }
   .hero-sub { font-size: 16px; }
   .hero-visual { padding: 0 24px 60px; }
-
+ 
   .container { padding: 0 24px; }
-
+ 
   .how-steps { grid-template-columns: 1fr 1fr; }
-
+ 
   .features-header { grid-template-columns: 1fr; gap: 24px; }
   .features-grid { grid-template-columns: 1fr 1fr; }
   .feature-card.wide { grid-column: span 2; }
-
+ 
   .ai-inner { grid-template-columns: 1fr; gap: 40px; }
-
+ 
   .metrics-inner { grid-template-columns: 1fr 1fr; gap: 32px; padding: 40px; }
-
+ 
   .pricing-grid { grid-template-columns: 1fr; max-width: 420px; margin: 0 auto; }
-
+  .pricing-grid--beta { grid-template-columns: 1fr; max-width: 420px; }
+ 
   .mockup-body { grid-template-columns: 1fr; }
   .mockup-sidebar { display: none; }
-
+ 
   .cta-inner { padding: 56px 32px; }
-
+ 
   footer { flex-direction: column; align-items: flex-start; padding: 36px 24px; }
 }
-
+ 
 /* ── Mobile ── */
 @media (max-width: 600px) {
   nav { padding: 0 16px; height: 56px; }
   .nav-logo-icon { width: 28px; height: 28px; font-size: 10px; }
   .nav-logo-text { font-size: 14px; }
-
+ 
   /* Nav CTA buttons — compact */
   .btn-ghost {
     padding: 5px 10px;
@@ -606,13 +700,13 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
   }
   /* Hide the arrow SVG in nav Join Beta on very small screens */
   .btn-primary-sm svg { display: none; }
-
+ 
   /* Hero */
   .hero { padding: 88px 18px 60px; }
   .hero-eyebrow { font-size: 10px; padding: 4px 10px 4px 7px; }
   .hero-title { letter-spacing: -1.5px; }
   .hero-sub { font-size: 14.5px; margin-bottom: 28px; }
-
+ 
   /* Hero CTAs — stack full width */
   .hero-ctas { flex-direction: column; align-items: stretch; gap: 10px; }
   .btn-hero {
@@ -629,19 +723,19 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
     border-radius: 10px;
     width: 100%;
   }
-
+ 
   .hero-trust { flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 36px; }
   .hero-visual { padding: 0 16px 48px; }
-
+ 
   /* Mockup */
   .mockup-stats-row { grid-template-columns: 1fr 1fr; gap: 8px; }
   .mockup-charts-row { grid-template-columns: 1fr; }
-
+ 
   /* How */
   .how-steps { grid-template-columns: 1fr; gap: 10px; }
   .how-step { padding: 22px 18px; }
   .how-section { padding: 70px 0; }
-
+ 
   /* Features */
   .container { padding: 0 18px; }
   .features-section { padding: 70px 0; }
@@ -649,25 +743,25 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
   .feature-card.wide { grid-column: span 1; }
   .feature-card { padding: 22px; }
   .section-title { letter-spacing: -1px; }
-
+ 
   /* AI pills */
   .ai-pills { gap: 6px; }
   .ai-pill { font-size: 11px; padding: 5px 10px; }
   .ai-section { padding: 70px 0; }
-
+ 
   /* Metrics */
   .metrics-section { padding: 56px 0; }
   .metrics-inner { grid-template-columns: 1fr 1fr; gap: 20px; padding: 28px 20px; border-radius: 16px; }
   .metric-val { font-size: 34px; }
   .metric-label { font-size: 11px; }
-
+ 
   /* Pricing */
   .pricing-section { padding: 70px 0; }
   .pricing-grid { max-width: 100%; }
   .pricing-card { padding: 24px 18px; }
   .pricing-price { font-size: 36px; }
   .pricing-btn { font-size: 13px; padding: 11px; }
-
+ 
   /* CTA */
   .cta-section { padding: 48px 0 72px; }
   .cta-inner { padding: 44px 18px; border-radius: 18px; }
@@ -680,7 +774,7 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
     font-size: 14px;
     border-radius: 10px;
   }
-
+ 
   /* Footer */
   footer { padding: 28px 18px; gap: 14px; }
   .footer-links { gap: 14px; }
@@ -1069,6 +1163,7 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
 </section>
 
 <!-- ─── PRICING ─── -->
+<!-- ─── PRICING ─── -->
 <section class="pricing-section" id="pricing">
   <div class="container">
     <div class="pricing-header">
@@ -1076,8 +1171,8 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
       <h2 class="section-title">Start free.<br/>Scale when ready.</h2>
       <p class="section-sub">Built for the realities of African and Global South markets — accessible pricing, no hidden costs.</p>
     </div>
-    <div class="pricing-note">🚀 Free during beta — pricing will apply after launch</div>
-    <div class="pricing-grid">
+      <div class="pricing-note">🚀 Free during beta — pricing will apply after launch</div>
+    <div class="pricing-grid pricing-grid--beta">
       <div class="pricing-card fade-up">
         <div class="pricing-plan">Free</div>
         <div class="pricing-price"><sup>$</sup>0</div>
@@ -1090,46 +1185,28 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
           <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>AI Chat (5 queries/day)</li>
           <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>3-hour session window</li>
         </ul>
-        <a href="https://data-pilot-eta.vercel.app/" target="_blank" class="pricing-btn pricing-btn-outline">
-  Join Beta
-</a>
+        <a href="https://data-pilot-eta.vercel.app/" target="_blank" class="pricing-btn pricing-btn-outline">Join Beta — It's Free</a>
       </div>
-      <div class="pricing-card featured fade-up">
-        <div class="pricing-badge">⚡ Most Popular</div>
-        <div class="pricing-plan">Pro</div>
-        <div class="pricing-price">
-          <div class="pricing-price-ghost" aria-hidden="true"><sup>$</sup>12<span style="font-size:20px;font-weight:500;letter-spacing:-0.5px">/mo</span></div>
-          <div class="pricing-price-label">Pro <span class="pricing-lock-pill">🔒 Coming after beta</span></div>
+ 
+      <!-- Paid plans teaser -->
+      <div class="pricing-teaser fade-up">
+        <div class="pricing-teaser-plans">
+          <div class="pricing-teaser-plan">
+            <span class="pricing-teaser-label">Pro</span>
+            <span class="pricing-teaser-dot"></span>
+          </div>
+          <div class="pricing-teaser-divider">+</div>
+          <div class="pricing-teaser-plan">
+            <span class="pricing-teaser-label">Team</span>
+            <span class="pricing-teaser-dot"></span>
+          </div>
         </div>
-        <div class="pricing-price-sub">Billed monthly · Cancel anytime</div>
-        <div class="pricing-divider"></div>
-        <ul class="pricing-features">
-          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Everything in Free</li>
-          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Unlimited AI Chat queries</li>
-          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>ML Model Training &amp; Predictions</li>
-          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Python Code Export</li>
-          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>PDF Report Generation</li>
-          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>24-hour session window</li>
-        </ul>
-        <a href="https://data-pilot-eta.vercel.app/" target="_blank" class="pricing-btn pricing-btn-filled">
-  Get Pro
-</a>      </div>
-      <div class="pricing-card fade-up">
-        <div class="pricing-plan">Team</div>
-        <div class="pricing-price">
-          <div class="pricing-price-ghost" aria-hidden="true"><sup>$</sup>39<span style="font-size:20px;font-weight:500;letter-spacing:-0.5px">/mo</span></div>
-          <div class="pricing-price-label">Team <span class="pricing-lock-pill">🔒 Coming after beta</span></div>
-        </div>
-        <div class="pricing-price-sub">Up to 5 seats · Coming soon</div>
-        <div class="pricing-divider"></div>
-        <ul class="pricing-features">
-          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Everything in Pro</li>
-          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>5 team seats included</li>
-          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Shared project workspace</li>
-          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Priority support</li>
-          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Custom integrations</li>
-        </ul>
-        <button class="pricing-btn pricing-btn-outline">Join Waitlist</button>
+        <div class="pricing-teaser-headline">Pricing unlocks<br/>after beta.</div>
+        <p class="pricing-teaser-body">Pro and Team plans are in the works — built for the realities of African and Global South markets. Beta users get first access to pricing, and early adopter rates.</p>
+        <a href="https://creatives-takeover.com/w/datapilot-beta" target="_blank" class="pricing-btn pricing-btn-filled pricing-teaser-cta">
+          Join Beta — Get Early Access
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
       </div>
     </div>
   </div>
