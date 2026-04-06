@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, Form
+from fastapi import APIRouter, UploadFile
 import chardet
 import pandas as pd
 import io
@@ -131,7 +131,7 @@ def sanitize_for_json(obj):
 
 # ── File processor ────────────────────────────────────────────────────────────
 
-async def process_file(file: UploadFile, plan: str = "free", user_id: str = None) -> Dict[str, Any]:
+async def process_file(file: UploadFile, plan: str = "free") -> Dict[str, Any]:
     if file.content_type not in READERS:
         return sanitize_for_json({
             "file_name": file.filename,
@@ -170,36 +170,12 @@ async def process_file(file: UploadFile, plan: str = "free", user_id: str = None
     session_id = create_session(df, plan=plan)
     expiry_minutes = PLAN_EXPIRY.get(plan.lower(), PLAN_EXPIRY["free"])
 
-    # Track row count and update global stats (do not decrement on expiry/delete)
+    # Track row count in memory (the frontend persists this to Firestore via its own SDK)
     row_count = len(df)
     try:
         USER_STATS["total_rows_processed"] += int(row_count)
     except Exception:
-        # be robust to unexpected values
         USER_STATS["total_rows_processed"] = int(row_count)
-
-    # If a user_id is provided, attempt to persist the counter in Firestore
-    persisted_total = None
-    if user_id:
-        try:
-            from google.cloud import firestore as gcf
-
-            db = gcf.Client()
-            user_doc = db.collection("users").document(user_id)
-            try:
-                # Atomically increment if doc exists
-                user_doc.update({"totalRowsProcessed": gcf.Increment(row_count), "updatedAt": gcf.SERVER_TIMESTAMP})
-            except Exception:
-                # If update fails (e.g., doc missing), set initial value (merge)
-                user_doc.set({"totalRowsProcessed": row_count, "createdAt": gcf.SERVER_TIMESTAMP, "updatedAt": gcf.SERVER_TIMESTAMP}, merge=True)
-
-            snap = user_doc.get()
-            if snap.exists:
-                data = snap.to_dict()
-                persisted_total = data.get("totalRowsProcessed") or data.get("total_rows_processed")
-        except Exception:
-            # If Firestore client isn't available or fails, ignore and fall back to in-memory stat
-            persisted_total = None
 
     result = {
         "file_name":      file.filename,
@@ -208,7 +184,7 @@ async def process_file(file: UploadFile, plan: str = "free", user_id: str = None
         "summary":        summary,
         "sample":         sample_rows,
         "row_count":      row_count,
-        "total_rows_processed": persisted_total if persisted_total is not None else USER_STATS.get("total_rows_processed", 0),
+        "total_rows_processed": USER_STATS.get("total_rows_processed", 0),
         "uploaded_at":    DATA_CACHE[session_id]["uploaded_at"],
         "expiry_minutes": expiry_minutes,
     }
@@ -218,12 +194,12 @@ async def process_file(file: UploadFile, plan: str = "free", user_id: str = None
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.post("/upload")
-async def upload_endpoint(file: UploadFile, plan: str = "free", user_id: str = Form(None)):
-    return await process_file(file, plan=plan, user_id=user_id)
+async def upload_endpoint(file: UploadFile, plan: str = "free"):
+    return await process_file(file, plan=plan)
 
 @router.post("/batch_uploads")
-async def batch_uploads_endpoint(files: List[UploadFile], plan: str = "free", user_id: str = Form(None)):
+async def batch_uploads_endpoint(files: List[UploadFile], plan: str = "free"):
     results = []
     for f in files:
-        results.append(await process_file(f, plan=plan, user_id=user_id))
+        results.append(await process_file(f, plan=plan))
     return results

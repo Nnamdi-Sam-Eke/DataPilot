@@ -55,6 +55,7 @@ async def generate_plot(payload: dict):
     """
     plots = payload.get("plots", [])
     compare_mode = payload.get("compareMode", False)
+    session_id = payload.get("session_id", None)  # used for plot cache scoping
     
     if compare_mode:
         compare_data = payload.get("compareData", [])
@@ -227,6 +228,7 @@ async def generate_plot(payload: dict):
                 df=df if not compare_mode else None,
                 dfs=dfs if compare_mode else None,
                 names=names if compare_mode else None,
+                session_id=session_id,
                 plot_type=plot_type,
                 x=x,
                 y=y,

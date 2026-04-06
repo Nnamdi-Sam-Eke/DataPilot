@@ -21,8 +21,8 @@ PLOT_CACHE = {}
 CACHE_MAX_SIZE = 100
 
 @lru_cache(maxsize=100)
-def get_cached_plot_hash(plot_type, x, y, hue, title, color_scheme, bins, window):
-    cache_key = f"{plot_type}:{x}:{y}:{hue}:{title}:{color_scheme}:{bins}:{window}"
+def get_cached_plot_hash(session_id, plot_type, x, y, hue, title, color_scheme, bins, window):
+    cache_key = f"{session_id}:{plot_type}:{x}:{y}:{hue}:{title}:{color_scheme}:{bins}:{window}"
     return hashlib.md5(cache_key.encode()).hexdigest()
 
 def get_from_cache(key):
@@ -35,14 +35,18 @@ def save_to_cache(key, val):
 
 def df_to_base64_plot(
     df=None, dfs=None, names=None,
+    session_id=None,
     plot_type="hist", x=None, y=None, hue=None, title=None,
     color_scheme="deep", grid=True, legend=True,
     bins=30, window=5, lag=1, cluster=False, show_pvalues=False
 ):
     cache_key = None
     if df is not None and dfs is None:
-        cache_key = get_cached_plot_hash(plot_type, str(x), str(y), str(hue),
-                                          str(title), color_scheme, bins, window)
+        cache_key = get_cached_plot_hash(
+            str(session_id or ""),
+            plot_type, str(x), str(y), str(hue),
+            str(title), color_scheme, bins, window,
+        )
         cached = get_from_cache(cache_key)
         if cached:
             return cached

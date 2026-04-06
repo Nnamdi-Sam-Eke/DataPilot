@@ -39,24 +39,31 @@ export default function PageUpload({ setPage }) {
   } = useDataPilot();
 
   // ── Project Context Handling ─────────────────────────────────────
-  // IMPORTANT: Clear project context when coming from sidebar navigation
-  const isFromSidebar = !localStorage.getItem("dp_current_project_id_from_dashboard");
+  // Capture the project context ONCE on mount using a ref so that
+  // subsequent re-renders (e.g. after upload) don't re-read stale or
+  // already-cleared localStorage keys and flip the context mid-session.
+  const projectContextRef = useRef(null);
+  if (projectContextRef.current === null) {
+    const fromDashboard = !!localStorage.getItem("dp_current_project_id_from_dashboard");
+    projectContextRef.current = {
+      isFromSidebar: !fromDashboard,
+      projectId:   fromDashboard ? localStorage.getItem("dp_current_project_id")   : null,
+      projectName: fromDashboard ? localStorage.getItem("dp_current_project_name") : null,
+    };
+  }
+  const { isFromSidebar, projectId: currentProjectId, projectName: currentProjectName }
+    = projectContextRef.current;
 
-  const currentProjectId = isFromSidebar 
-    ? null 
-    : localStorage.getItem("dp_current_project_id");
-
-  const currentProjectName = isFromSidebar 
-    ? null 
-    : localStorage.getItem("dp_current_project_name");
-
-  // Clear any lingering project context when opening Upload from sidebar
+  // Clear any lingering project context when opening Upload from sidebar.
+  // Run once on mount only — dependency array is intentionally empty.
   useEffect(() => {
     if (isFromSidebar) {
       localStorage.removeItem("dp_current_project_id");
       localStorage.removeItem("dp_current_project_name");
+      localStorage.removeItem("dp_current_project_id_from_dashboard");
     }
-  }, [isFromSidebar]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Session visibility: Show ALL sessions when no project context
   const visibleSessions = currentProjectId
@@ -140,8 +147,6 @@ export default function PageUpload({ setPage }) {
       fd.append("file", file);
 
       const plan = (userProfile?.plan || "free").toLowerCase();
-      // attach user id so backend can persist stats server-side
-      if (user?.uid) fd.append("user_id", user.uid);
 
       const res = await fetch(`${API_BASE}/upload?plan=${plan}`, {
         method: "POST",

@@ -85,10 +85,10 @@ if not numeric_df.empty:
 
 # Value counts for categorical columns
 categorical_cols = df.select_dtypes(include=['object']).columns
-for col in categorical_cols[:3]:  # First 3 categorical columns
-    print(f"\\n{{'='*50}}")
-    print(f"VALUE COUNTS FOR {{col}}:")
-    print(df[col].value_counts().head(10))
+    for col in categorical_cols[:3]:  # First 3 categorical columns
+        print("\\n" + "="*50)
+        print(f"VALUE COUNTS FOR {{col}}:")
+        print(df[col].value_counts().head(10))
 
 # ================== VISUALIZATIONS ==================
 
@@ -102,11 +102,11 @@ if '{numeric_example}' in df.columns:
     plt.show()
 
 # Group by analysis
-if '{categorical_example}' in df.columns and '{numeric_example}' in df.columns:
-    grouped = df.groupby('{categorical_example}')['{numeric_example}'].agg(['mean', 'median', 'std', 'count'])
-    print(f"\\n{{'='*50}}")
-    print(f"GROUPED ANALYSIS - {{'{numeric_example}'}} by {{'{categorical_example}'}}:")
-    print(grouped)
+    if '{categorical_example}' in df.columns and '{numeric_example}' in df.columns:
+        grouped = df.groupby('{categorical_example}')['{numeric_example}'].agg(['mean', 'median', 'std', 'count'])
+        print("\\n" + "="*50)
+        print("GROUPED ANALYSIS - '{numeric_example}' by '{categorical_example}':")
+        print(grouped)
     
     # Bar plot
     plt.figure(figsize=(12, 6))

@@ -67,9 +67,32 @@ const Stat = ({ value, label }) => (
   </div>
 );
 
+// ── eye toggle icon ───────────────────────────────────────────────────────────
+const EyeIcon = ({ visible }) =>
+  visible ? (
+    // eye-off: show when password is visible (click to hide)
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" />
+      <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  ) : (
+    // eye: show when password is hidden (click to reveal)
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+
 // ── input field ───────────────────────────────────────────────────────────────
 const Field = ({ id, label, type = "text", value, onChange, placeholder, required, minLength }) => {
   const [focused, setFocused] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === "password";
+  const resolvedType = isPassword ? (showPassword ? "text" : "password") : type;
+
   return (
     <div>
       <label htmlFor={id} style={{
@@ -80,25 +103,49 @@ const Field = ({ id, label, type = "text", value, onChange, placeholder, require
         transition: "color 0.2s",
         letterSpacing: "0.02em",
       }}>{label}</label>
-      <input
-        id={id} type={type} value={value}
-        onChange={onChange} placeholder={placeholder}
-        required={required} minLength={minLength}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        style={{
-          width: "100%", padding: "12px 14px",
-          borderRadius: 10,
-          border: `1px solid ${focused ? "rgba(108,99,255,0.5)" : "rgba(255,255,255,0.07)"}`,
-          background: focused ? "rgba(108,99,255,0.05)" : "rgba(255,255,255,0.03)",
-          color: "#e8eaf0",
-          outline: "none",
-          fontSize: 13.5,
-          fontFamily: "'DM Sans', sans-serif",
-          boxSizing: "border-box",
-          transition: "border-color 0.2s, background 0.2s",
-        }}
-      />
+      <div style={{ position: "relative" }}>
+        <input
+          id={id} type={resolvedType} value={value}
+          onChange={onChange} placeholder={placeholder}
+          required={required} minLength={minLength}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={{
+            width: "100%",
+            padding: isPassword ? "12px 42px 12px 14px" : "12px 14px",
+            borderRadius: 10,
+            border: `1px solid ${focused ? "rgba(108,99,255,0.5)" : "rgba(255,255,255,0.07)"}`,
+            background: focused ? "rgba(108,99,255,0.05)" : "rgba(255,255,255,0.03)",
+            color: "#e8eaf0",
+            outline: "none",
+            fontSize: 13.5,
+            fontFamily: "'DM Sans', sans-serif",
+            boxSizing: "border-box",
+            transition: "border-color 0.2s, background 0.2s",
+          }}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            tabIndex={-1}
+            title={showPassword ? "Hide password" : "Show password"}
+            style={{
+              position: "absolute", right: 12, top: "50%",
+              transform: "translateY(-50%)",
+              background: "none", border: "none", cursor: "pointer",
+              color: focused ? "#a78bfa" : "#4a4f62",
+              padding: 0, lineHeight: 1,
+              transition: "color 0.2s",
+              display: "flex", alignItems: "center",
+            }}
+            onMouseEnter={e => e.currentTarget.style.color = "#a78bfa"}
+            onMouseLeave={e => e.currentTarget.style.color = focused ? "#a78bfa" : "#4a4f62"}
+          >
+            <EyeIcon visible={showPassword} />
+          </button>
+        )}
+      </div>
     </div>
   );
 };
