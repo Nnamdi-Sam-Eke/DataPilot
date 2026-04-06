@@ -51,6 +51,7 @@ export default function PageInsights() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
+  const messagesRef = useRef(null);
 
   useEffect(() => {
     setChatMessages(messages);
@@ -61,7 +62,12 @@ export default function PageInsights() {
   }, [sessionId, activeSessionExpired, greeting]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = messagesRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (nearBottom) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages, loading]);
 
   const handleSend = async (text) => {
@@ -161,7 +167,7 @@ export default function PageInsights() {
           className="card"
           style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
         >
-          <div style={{ flex: 1, overflowY: "auto", paddingRight: 4, marginBottom: 16 }}>
+          <div ref={messagesRef} style={{ flex: 1, overflowY: "auto", paddingRight: 4, marginBottom: 16, maxHeight: "min(680px, calc(100vh - var(--header-h) - 180px))" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {messages.map((m, i) => (
                 <div
