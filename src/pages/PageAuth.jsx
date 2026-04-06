@@ -283,7 +283,7 @@ export default function PageAuth() {
 
   const FEATURES = [
     { icon: "⚡", label: "End-to-end pipeline",    sub: "Upload → Clean → Train → Export",  delay: 0.15 },
-    { icon: "✦",  label: "AI-powered insights",    sub: "Ask anything about your data",     delay: 0.25 },
+    { icon: "✦",  label: "AI-assisted insights",    sub: "Ask anything about your data",     delay: 0.25 },
     { icon: "⌗",  label: "17 chart types",         sub: "From histograms to pair plots",    delay: 0.35 },
     { icon: "⟨/⟩", label: "Session code export",  sub: "Python · Jupyter · Markdown",      delay: 0.45 },
   ];
