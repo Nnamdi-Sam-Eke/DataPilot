@@ -144,9 +144,9 @@ def fill_missing(session_id: str, body: FillMissingBody):
     elif strategy == "zero":
         df[body.column] = col.fillna(0 if pd.api.types.is_numeric_dtype(col) else "")
     elif strategy == "ffill":
-        df[body.column] = col.fillna(method="ffill")
+        df[body.column] = col.ffill()
     elif strategy == "bfill":
-        df[body.column] = col.fillna(method="bfill")
+        df[body.column] = col.bfill()
     elif strategy == "drop":
         df = df.dropna(subset=[body.column])
     else:
@@ -179,9 +179,9 @@ def fill_all_missing(session_id: str, body: FillAllMissingBody):
         elif strategy == "zero":
             df[col_name] = col.fillna(0 if pd.api.types.is_numeric_dtype(col) else "")
         elif strategy == "ffill":
-            df[col_name] = col.fillna(method="ffill")
+            df[col_name] = col.ffill()
         elif strategy == "bfill":
-            df[col_name] = col.fillna(method="bfill")
+            df[col_name] = col.bfill()
         elif strategy == "drop":
             df = df.dropna(subset=[col_name])
         total_filled += n_missing

@@ -1,5 +1,7 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from groq import Groq
+from dotenv import load_dotenv
+from pathlib import Path
 import os
 import logging
 from .upload import get_session
@@ -7,55 +9,41 @@ from .upload import get_session
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Server-level fallback key — used when user hasn't set their own
-SERVER_GROQ_KEY = os.getenv("GROQ_API_KEY")
+# Always load Backend/.env explicitly
+ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=ENV_PATH)
 
-if not SERVER_GROQ_KEY:
-    logger.warning("⚠️  GROQ_API_KEY not set. AI will only work if users supply their own key.")
-else:
-    logger.info("✅ Server Groq key loaded.")
+logger.info(f"Loading .env from: {ENV_PATH}")
+logger.info(f".env exists: {ENV_PATH.exists()}")
 
+def get_env(name: str, default: str | None = None) -> str | None:
+    value = os.getenv(name, default)
+    return value.strip() if isinstance(value, str) else value
 
-def get_groq_client(user_key: str | None) -> Groq | None:
-    """
-    Return a Groq client using the user's key if provided,
-    falling back to the server env key. Returns None if neither exists.
-    """
-    key = (user_key or "").strip() or SERVER_GROQ_KEY
-    if not key:
+def get_groq_client() -> Groq | None:
+    groq_api_key = get_env("GROQ_API_KEY")
+    if not groq_api_key:
+        logger.warning("GROQ_API_KEY is not set. Insights endpoint will not work.")
         return None
+
     try:
-        return Groq(api_key=key)
+        logger.info("Server Groq key loaded.")
+        return Groq(api_key=groq_api_key)
     except Exception as e:
         logger.error(f"Failed to init Groq client: {e}")
         return None
 
+GROQ_MODEL = get_env("GROQ_MODEL", "llama-3.3-70b-versatile")
+
 
 @router.post("/")
-async def get_insights(request: Request, payload: dict):
-    """
-    Generate AI insights for the active dataset.
-
-    Reads the Groq API key from:
-      1. x-groq-key request header  (user's own key from Settings page)
-      2. GROQ_API_KEY env variable   (server fallback)
-
-    Payload: { prompt: str, session_ids: [str] }
-    """
-    # ── resolve key ──────────────────────────────────────────────────────────
-    user_key  = request.headers.get("x-groq-key", "").strip()
-    client    = get_groq_client(user_key)
-    key_source = "user" if user_key else "server"
+async def get_insights(payload: dict):
+    client = get_groq_client()
 
     if not client:
-        return {
-            "error": (
-                "No Groq API key configured. "
-                "Go to Settings → Groq API Key and add your key from console.groq.com."
-            )
-        }
+        return {"error": "AI service is not configured on the server."}
 
-    prompt      = payload.get("prompt", "").strip()
+    prompt = str(payload.get("prompt", "")).strip()
     session_ids = payload.get("session_ids", [])
 
     if not prompt:
@@ -63,28 +51,28 @@ async def get_insights(request: Request, payload: dict):
     if not session_ids:
         return {"error": "No dataset selected."}
 
-    # ── gather dataset context ────────────────────────────────────────────────
     datasets_text = []
     for sid in session_ids:
         df = get_session(sid)
         if df is None:
-            return {"error": f"Dataset session '{sid}' not found or expired. Please re-upload."}
+            return {
+                "error": f"Dataset session '{sid}' not found or expired. Please re-upload."
+            }
 
         summary = {
-            "shape":           list(df.shape),
-            "columns":         df.columns.tolist(),
-            "dtypes":          df.dtypes.astype(str).to_dict(),
-            "sample":          df.head(5).to_dict(orient="records"),
-            "missing_values":  df.isnull().sum().to_dict(),
+            "shape": list(df.shape),
+            "columns": df.columns.tolist(),
+            "dtypes": df.dtypes.astype(str).to_dict(),
+            "sample": df.head(5).to_dict(orient="records"),
+            "missing_values": df.isnull().sum().to_dict(),
             "numeric_summary": (
                 df.describe().to_dict()
                 if len(df.select_dtypes(include=["number"]).columns) > 0
                 else {}
             ),
         }
-        datasets_text.append(f"Dataset ({sid[:8]}…):\n{summary}")
+        datasets_text.append(f"Dataset ({sid[:8]}...):\n{summary}")
 
-    # ── build prompt ──────────────────────────────────────────────────────────
     system_prompt = (
         "You are DataPilot, an expert data analysis assistant. "
         "Analyse the provided dataset context and answer the user's question with precision. "
@@ -99,23 +87,29 @@ async def get_insights(request: Request, payload: dict):
 
     try:
         result = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=GROQ_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user",   "content": user_message},
+                {"role": "user", "content": user_message},
             ],
             temperature=0.4,
             max_tokens=2048,
         )
+
         response = result.choices[0].message.content or "No response generated."
-        logger.info(f"✅ Insight generated [{key_source} key] for {len(session_ids)} dataset(s)")
+        logger.info(f"Insight generated for {len(session_ids)} dataset(s)")
         return {"response": response}
 
     except Exception as e:
         err = str(e)
-        logger.error(f"Groq request failed [{key_source} key]: {err}")
-        if "invalid_api_key" in err.lower() or "authentication" in err.lower():
-            return {"error": "Invalid API key. Check your key in Settings and try again."}
-        if "rate_limit" in err.lower():
-            return {"error": "Rate limit reached. Add your own Groq key in Settings for higher limits."}
-        return {"error": f"AI request failed: {err}"}
+        logger.error(f"Groq request failed: {err}")
+
+        lower_err = err.lower()
+
+        if "invalid_api_key" in lower_err or "authentication" in lower_err:
+            return {"error": "The server AI key is invalid or expired."}
+
+        if "rate_limit" in lower_err or "too many requests" in lower_err:
+            return {"error": "AI service is temporarily busy. Please try again shortly."}
+
+        return {"error": "AI request failed. Please try again."}

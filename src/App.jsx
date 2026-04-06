@@ -1,24 +1,22 @@
 /**
  * App.jsx — DataPilot
  *
- * What changed vs the previous version:
- *
- * 1. ONBOARDING — Firebase-backed flag (not localStorage).
- *    On every login, AppShell reads `users/{uid}.onboardingSeen` from Firestore.
- *    If it's missing or false, PageOnboarding is shown. markSeen() writes the
- *    flag with setDoc+merge so it's persistent across devices and browsers.
- *    Using the same `db` instance already imported in DataPilotContext, so
- *    there is no new Firebase init — just two extra Firestore calls.
- *
- * 2. PageOnboarding is imported and rendered inside AppShell before renderPage().
- *    It lives at the same level as the expiry banners, inside the authenticated
- *    shell, so Topbar, Sidebar, and theme are already applied.
- *
- * 3. No other logic changed. Banners, session probe, theme init, auth guard
- *    are all identical to the previous version.
+ * Routing: React Router DOM v6
+ * Each page has its own URL (e.g. /cleaning, /insights, /upload).
+ * Users can bookmark pages and navigate directly via URL.
+ * Auth guard redirects unauthenticated users to /auth.
+ * Onboarding logic and session banners are fully preserved.
  */
 
 import { useState, useEffect } from "react";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
 import { doc, getDoc, setDoc }  from "firebase/firestore";
 import { db }                   from "./services/firebase";
 import { styles }               from "./styles.jsx";
@@ -43,6 +41,22 @@ import PageSettings     from "./pages/PageSettings.jsx";
 
 const WARN_AT_MINUTES = 30;
 
+// ── Route → page name map (for Sidebar/Topbar active state) ───────────────────
+
+const PATH_TO_PAGE = {
+  "/dashboard":    "dashboard",
+  "/upload":       "upload",
+  "/overview":     "overview",
+  "/insights":     "insights",
+  "/visualization":"visualization",
+  "/train":        "train",
+  "/report":       "report",
+  "/predictions":  "predictions",
+  "/cleaning":     "cleaning",
+  "/codegen":      "codegen",
+  "/settings":     "settings",
+};
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function minutesRemaining(session) {
@@ -54,8 +68,9 @@ function minutesRemaining(session) {
 
 // ── Banner 1: live expiry countdown across ALL sessions ────────────────────────
 
-function SessionExpiryBanner({ setPage }) {
+function SessionExpiryBanner() {
   const { sessions } = useDataPilot();
+  const navigate     = useNavigate();
   const [, setTick]  = useState(0);
   const [dismissed, setDismissed] = useState(new Set());
 
@@ -115,7 +130,7 @@ function SessionExpiryBanner({ setPage }) {
         <strong style={{ color: iconColor }}>{timeLabel}</strong>
         {" — dataset will be cleared from the server. "}
         <button
-          onClick={() => setPage("upload")}
+          onClick={() => navigate("/upload")}
           style={{
             background: "none", border: "none", color: iconColor,
             cursor: "pointer", padding: 0, fontSize: "inherit",
@@ -144,8 +159,9 @@ function SessionExpiryBanner({ setPage }) {
 
 // ── Banner 2: return notification for sessions that expired while away ─────────
 
-function ReturnNotificationBanner({ setPage }) {
+function ReturnNotificationBanner() {
   const { sessions } = useDataPilot();
+  const navigate     = useNavigate();
   const [dismissed, setDismissed] = useState(false);
   const [expiredNames, setExpiredNames] = useState([]);
 
@@ -181,7 +197,7 @@ function ReturnNotificationBanner({ setPage }) {
       <span style={{ flex: 1 }}>
         {label}{" "}
         <button
-          onClick={() => setPage("upload")}
+          onClick={() => navigate("/upload")}
           style={{
             background: "none", border: "none", color: "#ff6b6b",
             cursor: "pointer", padding: 0, fontSize: "inherit",
@@ -207,36 +223,18 @@ function ReturnNotificationBanner({ setPage }) {
   );
 }
 
-// ── Page router ────────────────────────────────────────────────────────────────
-
-function renderPage(page, setPage) {
-  switch (page) {
-    case "dashboard":    return <PageDashboard setPage={setPage} />;
-    case "upload":       return <PageUpload setPage={setPage} />;
-    case "overview":     return <PageOverview />;
-    case "insights":     return <PageInsights />;
-    case "visualization":return <PageVisualization />;
-    case "train":        return <PageTrain />;
-    case "report":       return <PageReport />;
-    case "predictions":  return <PagePredictions />;
-    case "cleaning":     return <PageCleaning />;
-    case "codegen":      return <PageCodeGen />;
-    case "settings":     return <PageSettings />;
-    default:             return <PageDashboard setPage={setPage} />;
-  }
-}
-
 // ── AppShell ───────────────────────────────────────────────────────────────────
 
 function AppShell() {
   const { user, authLoading } = useDataPilot();
+  const navigate              = useNavigate();
+  const location              = useLocation();
 
-  const [page, setPage]             = useState("dashboard");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  // ── Onboarding state ────────────────────────────────────────────────────
-  // null = not yet checked (loading), false = seen, true = show onboarding
+  const [sidebarOpen, setSidebarOpen]   = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(null);
+
+  // Derive active page name from current URL path
+  const currentPage = PATH_TO_PAGE[location.pathname] || "dashboard";
 
   // ── Theme init ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -248,11 +246,13 @@ function AppShell() {
     document.documentElement.setAttribute("data-accent", savedAccent);
   }, []);
 
-  // ── Check Firestore for onboardingSeen whenever user resolves ───────────
+  // ── Check Firestore for onboardingSeen whenever auth/user resolves ───
   useEffect(() => {
+    if (authLoading) return; // wait until auth finishes
+
     if (!user) {
-      // Signed out — reset so next login re-checks cleanly
-      setShowOnboarding(null);
+      // No signed-in user → resolve onboarding to `false` so signed-out flow continues
+      setShowOnboarding(false);
       return;
     }
 
@@ -262,19 +262,16 @@ function AppShell() {
       try {
         const snap = await getDoc(doc(db, "users", user.uid));
         if (cancelled) return;
-        // Show onboarding when the document doesn't exist yet
-        // or when onboardingSeen is explicitly false / missing
         const seen = snap.exists() && snap.data()?.onboardingSeen === true;
         setShowOnboarding(!seen);
       } catch (err) {
-        // Network error or permissions issue — fail open (skip onboarding)
         console.error("Could not read onboardingSeen flag:", err);
         if (!cancelled) setShowOnboarding(false);
       }
     })();
 
     return () => { cancelled = true; };
-  }, [user]);
+  }, [authLoading, user]);
 
   // ── Mark onboarding as done in Firestore ────────────────────────────────
   const markOnboardingSeen = async () => {
@@ -283,22 +280,21 @@ function AppShell() {
       await setDoc(
         doc(db, "users", user.uid),
         { onboardingSeen: true },
-        { merge: true }          // preserves firstName, lastName, etc.
+        { merge: true }
       );
     } catch (err) {
-      // Non-critical — user still proceeds; flag will be set next session
       console.error("Failed to persist onboardingSeen:", err);
     }
     setShowOnboarding(false);
   };
 
-  const navigate = (p) => {
-    setPage(p);
+  const goTo = (path) => {
+    navigate(path);
     setSidebarOpen(false);
   };
 
   // ── Loading screen ──────────────────────────────────────────────────────
-  if (authLoading) {
+  if (authLoading || (user && showOnboarding === null)) {
     return (
       <>
         <style>{styles}</style>
@@ -322,27 +318,7 @@ function AppShell() {
     );
   }
 
-  // ── Onboarding check loading (brief Firestore read) ─────────────────────
-  // showOnboarding === null means we're still waiting for the Firestore check.
-  // Render the shell skeleton (sidebar + topbar visible) but no page content
-  // yet, so there's no flash of dashboard before onboarding appears.
-  if (showOnboarding === null) {
-    return (
-      <>
-        <style>{styles}</style>
-        <div style={{
-          minHeight: "100vh", display: "grid", placeItems: "center",
-          background: "#0b0f19", color: "#fff", fontSize: "1rem",
-        }}>
-          Loading...
-        </div>
-      </>
-    );
-  }
-
-  // ── Onboarding page ─────────────────────────────────────────────────────
-  // Rendered inside the full authenticated shell so Topbar, theme, and sidebar
-  // are already applied — consistent with every other page.
+  // ── Onboarding ──────────────────────────────────────────────────────────
   if (showOnboarding) {
     return (
       <>
@@ -353,19 +329,13 @@ function AppShell() {
             className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`}
             onClick={() => setSidebarOpen(false)}
           />
-          <Sidebar page="dashboard" setPage={navigate} isOpen={sidebarOpen} />
+          <Sidebar page="dashboard" setPage={goTo} isOpen={sidebarOpen} />
           <div className="main-area">
             <Topbar page="dashboard" onMenuClick={() => setSidebarOpen((o) => !o)} />
             <main className="page-content">
               <PageOnboarding
-                onStart={async () => {
-                  await markOnboardingSeen();
-                  navigate("upload");
-                }}
-                onSkip={async () => {
-                  await markOnboardingSeen();
-                  navigate("dashboard");
-                }}
+                onStart={async () => { await markOnboardingSeen(); goTo("/upload"); }}
+                onSkip={async ()  => { await markOnboardingSeen(); goTo("/dashboard"); }}
               />
             </main>
           </div>
@@ -384,13 +354,26 @@ function AppShell() {
           className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`}
           onClick={() => setSidebarOpen(false)}
         />
-        <Sidebar page={page} setPage={navigate} isOpen={sidebarOpen} />
+        <Sidebar page={currentPage} setPage={goTo} isOpen={sidebarOpen} />
         <div className="main-area">
-          <Topbar page={page} onMenuClick={() => setSidebarOpen((o) => !o)} />
-          <SessionExpiryBanner setPage={navigate} />
-          <ReturnNotificationBanner setPage={navigate} />
-          <main className="page-content" key={page}>
-            {renderPage(page, navigate)}
+          <Topbar page={currentPage} onMenuClick={() => setSidebarOpen((o) => !o)} />
+          <SessionExpiryBanner />
+          <ReturnNotificationBanner />
+          <main className="page-content" key={location.pathname}>
+            <Routes>
+              <Route path="/dashboard"    element={<PageDashboard setPage={goTo} />} />
+              <Route path="/upload"       element={<PageUpload    setPage={goTo} />} />
+              <Route path="/overview"     element={<PageOverview />} />
+              <Route path="/insights"     element={<PageInsights />} />
+              <Route path="/visualization"element={<PageVisualization />} />
+              <Route path="/train"        element={<PageTrain />} />
+              <Route path="/report"       element={<PageReport />} />
+              <Route path="/predictions"  element={<PagePredictions />} />
+              <Route path="/cleaning"     element={<PageCleaning />} />
+              <Route path="/codegen"      element={<PageCodeGen />} />
+              <Route path="/settings"     element={<PageSettings />} />
+              <Route path="*"             element={<Navigate to="/dashboard" replace />} />
+            </Routes>
           </main>
         </div>
       </div>
@@ -402,8 +385,10 @@ function AppShell() {
 
 export default function App() {
   return (
-    <DataPilotProvider>
-      <AppShell />
-    </DataPilotProvider>
+    <BrowserRouter>
+      <DataPilotProvider>
+        <AppShell />
+      </DataPilotProvider>
+    </BrowserRouter>
   );
 }

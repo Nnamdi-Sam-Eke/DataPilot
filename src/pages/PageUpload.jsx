@@ -35,6 +35,7 @@ export default function PageUpload({ setPage }) {
     switchSession,
     activeIdx,
     fileName,
+    setTotalRowsProcessed,
   } = useDataPilot();
 
   // ── Project Context Handling ─────────────────────────────────────
@@ -139,6 +140,9 @@ export default function PageUpload({ setPage }) {
       fd.append("file", file);
 
       const plan = (userProfile?.plan || "free").toLowerCase();
+      // attach user id so backend can persist stats server-side
+      if (user?.uid) fd.append("user_id", user.uid);
+
       const res = await fetch(`${API_BASE}/upload?plan=${plan}`, {
         method: "POST",
         body: fd,
@@ -184,6 +188,11 @@ export default function PageUpload({ setPage }) {
 
       addSession(sessionPayload);
 
+      // Update global processed rows stat (from backend)
+      if (typeof setTotalRowsProcessed === "function" && typeof data.total_rows_processed !== "undefined") {
+        setTotalRowsProcessed(data.total_rows_processed || 0);
+      }
+
       if (user?.uid) {
         logActivity(user.uid, {
           action: "Dataset uploaded",
@@ -204,10 +213,6 @@ export default function PageUpload({ setPage }) {
             summary: sessionPayload.summary,
             sessionId: sessionPayload.sessionId,
           }, currentProjectId);   // ← This links the dataset to the project
-
-          // Clear project context after successful save
-          // localStorage.removeItem("dp_current_project_id");
-          // localStorage.removeItem("dp_current_project_name");
         } catch (err) {
           console.error("Failed to save dataset to Firestore:", err);
         }
@@ -617,7 +622,7 @@ export default function PageUpload({ setPage }) {
             <button
               className="btn-primary"
               style={{ width: "100%", justifyContent: "center" }}
-              onClick={() => setPage("overview")}
+              onClick={() => setPage("/overview")}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d={Icons.chart} />

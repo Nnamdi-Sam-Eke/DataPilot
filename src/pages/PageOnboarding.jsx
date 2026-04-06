@@ -335,13 +335,15 @@ export default function PageOnboarding({ onStart, onSkip }) {
                 <Tile
                   emoji="⚡"
                   title="Upload to insight fast"
-                  text="No environment to configure. Everything runs in your browser session."
-                />
+                   text="Upload, clean, visualize, and model your data without writing code or configuring environments."
+
+                                 />
                 <Tile
                   emoji="🧩"
                   title="No setup required"
-                  text="Clean, visualize, and model your data without writing code or configuring environments."
-                />
+                   text="No environment to configure. Everything runs in your browser session."
+
+                  />
               </div>
 
               <div
@@ -376,8 +378,7 @@ export default function PageOnboarding({ onStart, onSkip }) {
                     display: "inline-flex", alignItems: "center", gap: 8,
                     padding: "13px 16px", borderRadius: 12,
                     border: "1px solid var(--border)", background: "transparent",
-                    color: "var(--text3)", fontSize: 13, fontWeight: 600,
-                    fontFamily: "'DM Sans', sans-serif", cursor: "pointer", opacity: 0.6, fontSize: 12.5
+                    color: "var(--text3)", fontWeight: 600,fontFamily: "'DM Sans', sans-serif", cursor: "pointer", opacity: 0.6, fontSize: 12.5
                   }}
                 >
                   Skip for now

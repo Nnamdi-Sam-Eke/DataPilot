@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";
 import { Icons } from "../shared/icons.jsx";
 
@@ -114,6 +114,10 @@ export default function PageCleaning() {
   const [success,     setSuccess]     = useState("");
   const [downloading, setDownloading] = useState(false);
   const [promoting,   setPromoting]   = useState(false);
+
+  // Tab drag-scroll
+  const tabBarRef = useRef(null);
+  const tabDrag   = useRef(null);
 
   // Persisted state — aliases from context
   const opLog            = cleanOpLog;
@@ -283,7 +287,7 @@ const categoricalCols = safeColumns.filter((c) => {
 ];
 
   return (
-    <div className="page-enter">
+    <div className="page-enter" style={{ overflow:"hidden" }}>
       {/* ── header ── */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -330,10 +334,10 @@ const categoricalCols = safeColumns.filter((c) => {
         ))}
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 320px", gap:16, alignItems:"start" }} className="cleaning-layout">
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 320px", gap:16, alignItems:"start", minWidth:0, overflow:"hidden" }} className="cleaning-layout">
 
         {/* ── left: operations panel ── */}
-        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:14, minWidth:0, overflow:"hidden" }}>
 
           {/* feedback */}
           {error && (
@@ -348,15 +352,33 @@ const categoricalCols = safeColumns.filter((c) => {
           )}
 
           {/* tab bar */}
-          <div className="card" style={{ padding:0, overflow:"hidden" }}>
-            <div style={{ display:"flex", borderBottom:"1px solid var(--border)" }}>
+          <div className="card" style={{ padding:0, overflow:"hidden", minWidth:0 }}>
+            <div
+              className="codegen-tabs"
+              style={{ borderBottom:"1px solid var(--border)", background:"var(--bg2)", cursor:"grab" }}
+              ref={tabBarRef}
+              onMouseDown={e => {
+                tabDrag.current = { active:true, startX: e.pageX - tabBarRef.current.offsetLeft, scrollLeft: tabBarRef.current.scrollLeft };
+                tabBarRef.current.style.cursor = "grabbing";
+              }}
+              onMouseLeave={() => { if (tabDrag.current?.active) { tabDrag.current.active = false; tabBarRef.current.style.cursor = "grab"; } }}
+              onMouseUp={()    => { if (tabDrag.current)         { tabDrag.current.active = false; tabBarRef.current.style.cursor = "grab"; } }}
+              onMouseMove={e  => {
+                if (!tabDrag.current?.active) return;
+                e.preventDefault();
+                tabBarRef.current.scrollLeft = tabDrag.current.scrollLeft - (e.pageX - tabBarRef.current.offsetLeft - tabDrag.current.startX);
+              }}
+            >
               {TABS.map(t => (
                 <button key={t.id} onClick={() => setActiveTab(t.id)}
-                  style={{ flex:1, padding:"12px 8px", background:"none", border:"none", cursor:"pointer", fontSize:12, fontWeight:500,
+                  style={{
+                    flexShrink:0, padding:"12px 16px", background:"none", border:"none", cursor:"pointer",
+                    fontSize:12, fontWeight:500, whiteSpace:"nowrap",
                     color: activeTab===t.id ? "var(--text)" : "var(--text3)",
                     borderBottom: activeTab===t.id ? "2px solid var(--accent)" : "2px solid transparent",
-                    transition:"all 0.15s", display:"flex", alignItems:"center", justifyContent:"center", gap:5,
-                    fontFamily:"'DM Sans',sans-serif" }}>
+                    transition:"all 0.15s", display:"flex", alignItems:"center", gap:5,
+                    fontFamily:"'DM Sans',sans-serif",
+                  }}>
                   {t.label}
                   {t.badge != null && t.badge > 0 && (
                     <span style={{ background:"rgba(248,113,113,0.15)", color:"var(--red)", border:"1px solid rgba(248,113,113,0.25)", borderRadius:10, fontSize:9, padding:"1px 5px", fontFamily:"'DM Mono',monospace" }}>
@@ -608,7 +630,7 @@ const categoricalCols = safeColumns.filter((c) => {
         </div>
 
         {/* ── right: log + preview ── */}
-        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:14, minWidth:0 }}>
 
           {/* operation log */}
           <div className="card">

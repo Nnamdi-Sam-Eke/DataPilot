@@ -9,3 +9,5 @@ scikit-learn
 groq
 python-dotenv
 chardet
+google-cloud-firestore
+python-dotenv

@@ -127,6 +127,7 @@ export default function PageDashboard({ setPage }) {
   resetWorkspaceState,
 } = useDataPilot();
 
+
   const [datasets, setDatasets] = useState([]);
   const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -195,24 +196,41 @@ export default function PageDashboard({ setPage }) {
     [datasets, sessionMap]
   );
 
+  const projectIds = useMemo(() => new Set((projects || []).map((project) => project.id)), [projects]);
+
   const standaloneDatasets = useMemo(
-    () => datasetsWithStatus.filter((dataset) => !dataset.projectId),
-    [datasetsWithStatus]
+    () =>
+      datasetsWithStatus.filter(
+        (dataset) => !dataset.projectId || !projectIds.has(dataset.projectId)
+      ),
+    [datasetsWithStatus, projectIds]
   );
 
   const activeDatasetCount = datasetsWithStatus.filter((dataset) => !dataset.isExpired).length;
   const totalDatasets = datasets.length;
-  const rowsProcessed = datasets.reduce((sum, dataset) => sum + (dataset.rowCount || 0), 0);
+
+  const rowsProcessed = useMemo(
+    () =>
+      datasetsWithStatus.reduce(
+        (sum, dataset) => sum + (Number(dataset.rowCount) || 0),
+        0
+      ),
+    [datasetsWithStatus]
+  );
 
   const projectDatasetMap = useMemo(() => {
     const map = new Map();
+
     datasetsWithStatus.forEach((dataset) => {
       if (!dataset.projectId) return;
+      if (!projectIds.has(dataset.projectId)) return;
+
       if (!map.has(dataset.projectId)) map.set(dataset.projectId, []);
       map.get(dataset.projectId).push(dataset);
     });
+
     return map;
-  }, [datasetsWithStatus]);
+  }, [datasetsWithStatus, projectIds]);
 
   const datasetSpark = datasets.length
     ? [...datasets].reverse().slice(-8).map((_, index) => index + 1)
@@ -239,7 +257,7 @@ export default function PageDashboard({ setPage }) {
     },
     ...STATIC_STATS,
     {
-      label: "Rows Processed",
+      label: "Total Rows Processed",
       value: loading
         ? "—"
         : rowsProcessed >= 1_000_000
@@ -247,7 +265,7 @@ export default function PageDashboard({ setPage }) {
         : rowsProcessed >= 1000
         ? `${Math.round(rowsProcessed / 1000)}K`
         : String(rowsProcessed),
-      sub: "Total across datasets",
+      sub: "Rows across current datasets",
       color: "var(--amber)",
       spark: rowsSpark,
     },
@@ -305,7 +323,7 @@ export default function PageDashboard({ setPage }) {
     localStorage.setItem("dp_current_project_name", project.name);
     localStorage.setItem("dp_current_project_id_from_dashboard", "true");
     setSelectedProject(null);
-    setPage("upload");
+    setPage("/upload");
   };
 
   const handleOpenDataset = async (dataset, project = null) => {
@@ -325,12 +343,12 @@ export default function PageDashboard({ setPage }) {
     if (sessionIndex !== -1) {
       await switchSession(sessionIndex);
       setSelectedProject(null);
-      setPage("overview");
+      setPage("/overview");
       return;
     }
 
     setSelectedProject(null);
-    setPage("upload");
+    setPage("/upload");
   };
 
   const handleDeleteStandaloneDataset = async (dataset) => {
@@ -388,9 +406,6 @@ export default function PageDashboard({ setPage }) {
   setDeleting(true);
   try {
     const activeProjectId = localStorage.getItem("dp_current_project_id");
-    const activeSessionInProject = sessions.some(
-      (session, index) => session?.projectId === project.id && index === sessions.findIndex((s) => s.sessionId === session?.sessionId)
-    );
 
     await firestoreService.deleteProject(user.uid, project.id);
     await logDeleteActivity("Project deleted", project.name || "Untitled project");
@@ -405,7 +420,7 @@ export default function PageDashboard({ setPage }) {
 
     setSelectedProject(null);
     setConfirmDelete(null);
-    setPage("dashboard");
+    setPage("/dashboard");
   } catch (err) {
     console.error("Failed to delete project:", err);
     alert("Failed to delete project. Please try again.");
@@ -432,7 +447,7 @@ export default function PageDashboard({ setPage }) {
               localStorage.removeItem("dp_current_project_id");
               localStorage.removeItem("dp_current_project_name");
               localStorage.removeItem("dp_current_project_id_from_dashboard");
-              setPage("upload");
+              setPage("/upload");
             }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

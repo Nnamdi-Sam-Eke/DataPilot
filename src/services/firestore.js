@@ -5,6 +5,7 @@ import {
   collection,
   addDoc,
   getDocs,
+  getDoc,
   query,
   orderBy,
   serverTimestamp,
@@ -17,6 +18,36 @@ import {
 } from "firebase/firestore";
 
 import { db } from "./firebase";
+
+// ── User-level counters / stats ──────────────────────────────────────────
+export async function incrementTotalRowsProcessed(userId, rows) {
+  if (!userId) throw new Error("Missing userId");
+  if (!rows || rows <= 0) return;
+
+  const userRef = doc(db, "users", userId);
+  try {
+    await updateDoc(userRef, {
+      totalRowsProcessed: increment(rows),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    // If the user doc doesn't exist, create it with the initial value.
+    await setDoc(userRef, {
+      totalRowsProcessed: rows,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  }
+}
+
+export async function getUserTotalRowsProcessed(userId) {
+  if (!userId) throw new Error("Missing userId");
+  const userRef = doc(db, "users", userId);
+  const snap = await getDoc(userRef);
+  if (!snap.exists()) return 0;
+  const data = snap.data();
+  return data?.totalRowsProcessed || 0;
+}
 
 // ── User Profile ─────────────────────────────────────────────────────────
 export async function saveUserProfile(user, extra = {}) {
