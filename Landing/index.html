@@ -173,6 +173,31 @@ nav {
 }
 .btn-primary-sm:hover { transform: translateY(-1px); box-shadow: 0 4px 30px rgba(108,99,255,0.45); }
 
+/* ─── Secondary (middle-weight) button ─── */
+.btn-secondary {
+  padding: 7px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(108,99,255,0.35);
+  background: rgba(108,99,255,0.08);
+  color: var(--accent2);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.btn-secondary:hover {
+  background: rgba(108,99,255,0.15);
+  border-color: var(--accent2);
+}
+
 .btn-hero {
   padding: 13px 28px;
   border-radius: 12px;
@@ -398,6 +423,19 @@ section { position: relative; z-index: 1; }
 .marquee-track { display: flex; overflow: hidden; mask-image: linear-gradient(to right, transparent, black 15%, black 85%, transparent); }
 .marquee-inner { display: flex; gap: 12px; animation: marquee 25s linear infinite; white-space: nowrap; flex-shrink: 0; }
 @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+/* ─── Pricing lock overlay styles ─── */
+.pricing-price { position: relative; min-height: 44px; display: flex; align-items: center; gap: 10px; }
+.pricing-price-ghost { color: rgba(255,255,255,0.06); filter: blur(2px); user-select: none; -webkit-user-select: none; pointer-events: none; font-weight: 700; font-size: 28px; }
+.pricing-price-ghost sup { font-size: 14px; vertical-align: super; opacity: 0.06; }
+.pricing-price-label { color: var(--text2); font-size: 15px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+.pricing-lock-pill { display: inline-flex; align-items: center; gap: 8px; font-family: 'DM Mono', monospace; font-size: 12px; padding: 6px 10px; border-radius: 999px; background: rgba(8,10,18,0.6); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border: 1px solid rgba(167,139,250,0.12); color: var(--accent2); }
+
+/* stronger tint for featured card so overlay reads as intentional */
+.pricing-card.featured .pricing-lock-pill { background: rgba(20,18,36,0.75); border-color: rgba(108,99,255,0.22); }
+
+/* ensure ghost numbers don't get announced by assistive tech */
+/* aria-hidden on the ghost element prevents screen readers from announcing it */
 .marquee-chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 16px; border-radius: 100px; background: var(--bg3); border: 1px solid var(--border); font-size: 12px; color: var(--text2); white-space: nowrap; flex-shrink: 0; }
 .marquee-chip-dot { width: 6px; height: 6px; border-radius: 50%; }
 
@@ -668,9 +706,9 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
     <li><a href="#pricing">Pricing</a></li>
   </ul>
   <div class="nav-cta">
-    <a href="#" class="btn-ghost">Sign in</a>
-    <a href="https://creatives-takeover.com/w/datapilot-beta" target="_blank" class="btn-primary-sm">
-      Join Beta
+    <a href="https://data-pilot-eta.vercel.app/"  class="btn-ghost">Sign in</a>
+    <a href="https://chat.whatsapp.com/BTfpSQWXMDq20BIktqD7ih" target="_blank" class="btn-secondary">
+      Join Community (Beta)
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
     </a>
   </div>
@@ -692,8 +730,8 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
       DataPilot is the data analysis workspace built for analysts, consultants, and businesses across Africa and the Global South — turning raw data into sharp, confident decisions. Run your entire data workflow — without writing code 
     </p>
     <div class="hero-ctas">
-      <a href="https://creatives-takeover.com/w/datapilot-beta" target="_blank" class="btn-hero">
-        Get Early Access
+      <a href="https://data-pilot-eta.vercel.app/"  target="_blank" class="btn-hero">
+        Join Beta
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       </a>
       <a href="#how" class="btn-hero-ghost">
@@ -1038,7 +1076,7 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
       <h2 class="section-title">Start free.<br/>Scale when ready.</h2>
       <p class="section-sub">Built for the realities of African and Global South markets — accessible pricing, no hidden costs.</p>
     </div>
-    <div class="pricing-note">Free during beta — pricing applies after launch</div>
+    <div class="pricing-note">🚀 Free during beta — pricing will apply after launch</div>
     <div class="pricing-grid">
       <div class="pricing-card fade-up">
         <div class="pricing-plan">Free</div>
@@ -1052,12 +1090,17 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
           <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>AI Chat (5 queries/day)</li>
           <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>3-hour session window</li>
         </ul>
-        <button class="pricing-btn pricing-btn-outline">Get Started Free</button>
+        <a href="https://data-pilot-eta.vercel.app/" target="_blank" class="pricing-btn pricing-btn-outline">
+  Join Beta
+</a>
       </div>
       <div class="pricing-card featured fade-up">
         <div class="pricing-badge">⚡ Most Popular</div>
         <div class="pricing-plan">Pro</div>
-        <div class="pricing-price"><sup>$</sup>12<span style="font-size:20px;font-weight:500;letter-spacing:-0.5px">/mo</span></div>
+        <div class="pricing-price">
+          <div class="pricing-price-ghost" aria-hidden="true"><sup>$</sup>12<span style="font-size:20px;font-weight:500;letter-spacing:-0.5px">/mo</span></div>
+          <div class="pricing-price-label">Pro <span class="pricing-lock-pill">🔒 Coming after beta</span></div>
+        </div>
         <div class="pricing-price-sub">Billed monthly · Cancel anytime</div>
         <div class="pricing-divider"></div>
         <ul class="pricing-features">
@@ -1068,11 +1111,15 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
           <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>PDF Report Generation</li>
           <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>24-hour session window</li>
         </ul>
-        <button class="pricing-btn pricing-btn-filled">Join Beta — Get Pro</button>
-      </div>
+        <a href="https://data-pilot-eta.vercel.app/" target="_blank" class="pricing-btn pricing-btn-filled">
+  Get Pro
+</a>      </div>
       <div class="pricing-card fade-up">
         <div class="pricing-plan">Team</div>
-        <div class="pricing-price"><sup>$</sup>39<span style="font-size:20px;font-weight:500;letter-spacing:-0.5px">/mo</span></div>
+        <div class="pricing-price">
+          <div class="pricing-price-ghost" aria-hidden="true"><sup>$</sup>39<span style="font-size:20px;font-weight:500;letter-spacing:-0.5px">/mo</span></div>
+          <div class="pricing-price-label">Team <span class="pricing-lock-pill">🔒 Coming after beta</span></div>
+        </div>
         <div class="pricing-price-sub">Up to 5 seats · Coming soon</div>
         <div class="pricing-divider"></div>
         <ul class="pricing-features">
@@ -1096,8 +1143,8 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
       <h2 class="cta-title">Your data has<br/>stories to tell.</h2>
       <p class="cta-sub">Join analysts and business owners across Africa who are already making faster, smarter decisions with DataPilot.</p>
       <div class="cta-ctas">
-        <a href="https://creatives-takeover.com/w/datapilot-beta" target="_blank" class="btn-hero">
-          Apply for Beta Access
+        <a href="https://data-pilot-eta.vercel.app/"  target="_blank" class="btn-hero">
+          Join Beta
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </a>
         <a href="#features" class="btn-hero-ghost">Explore Features</a>

@@ -19,12 +19,14 @@ import {
 } from "react-router-dom";
 import { doc, getDoc, setDoc }  from "firebase/firestore";
 import { db }                   from "./services/firebase";
+import { saveUserProfile }      from "./services/firestore";
 import { styles }               from "./styles.jsx";
 import { DataPilotProvider, useDataPilot } from "./DataPilotContext.jsx";
 import Sidebar      from "./components/Sidebar.jsx";
 import Topbar       from "./components/Topbar.jsx";
 import PageAuth     from "./pages/PageAuth.jsx";
 import PageOnboarding   from "./pages/PageOnboarding.jsx";
+import PageBetaProfile  from "./pages/PageBetaProfile.jsx";
 import PageDashboard    from "./pages/PageDashboard.jsx";
 import PageUpload       from "./pages/PageUpload.jsx";
 import PageOverview     from "./pages/PageOverview.jsx";
@@ -226,12 +228,22 @@ function ReturnNotificationBanner() {
 // ── AppShell ───────────────────────────────────────────────────────────────────
 
 function AppShell() {
-  const { user, authLoading } = useDataPilot();
+  const {
+    user,
+    authLoading,
+    isOffline,
+    setIsOffline,
+    retryConnection,
+    retryingConnection,
+    connectionRetryKey,
+  } = useDataPilot();
   const navigate              = useNavigate();
   const location              = useLocation();
-
   const [sidebarOpen, setSidebarOpen]   = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(null);
+  const [flagsLoading, setFlagsLoading] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showBetaProfile, setShowBetaProfile] = useState(false);
+  const [betaSaving, setBetaSaving] = useState(false);
 
   // Derive active page name from current URL path
   const currentPage = PATH_TO_PAGE[location.pathname] || "dashboard";
@@ -246,32 +258,57 @@ function AppShell() {
     document.documentElement.setAttribute("data-accent", savedAccent);
   }, []);
 
-  // ── Check Firestore for onboardingSeen whenever auth/user resolves ───
+  // ── Load betaProfile + onboarding flags; retry-aware ─────────────────────
   useEffect(() => {
-    if (authLoading) return; // wait until auth finishes
-
-    if (!user) {
-      // No signed-in user → resolve onboarding to `false` so signed-out flow continues
-      setShowOnboarding(false);
-      return;
-    }
-
     let cancelled = false;
 
-    (async () => {
-      try {
-        const snap = await getDoc(doc(db, "users", user.uid));
-        if (cancelled) return;
-        const seen = snap.exists() && snap.data()?.onboardingSeen === true;
-        setShowOnboarding(!seen);
-      } catch (err) {
-        console.error("Could not read onboardingSeen flag:", err);
-        if (!cancelled) setShowOnboarding(false);
-      }
-    })();
+    const loadFlags = async () => {
+      if (authLoading) return;
 
-    return () => { cancelled = true; };
-  }, [authLoading, user]);
+      if (!user) {
+        if (!cancelled) {
+          setFlagsLoading(false);
+          setShowBetaProfile(false);
+          setShowOnboarding(false);
+        }
+        return;
+      }
+
+      try {
+        setFlagsLoading(true);
+
+        const userRef = doc(db, "users", user.uid);
+        const snap = await getDoc(userRef);
+        const data = snap.exists() ? snap.data() : {};
+
+        if (!cancelled) {
+          setShowBetaProfile(!data?.betaProfileSeen);
+          setShowOnboarding(!data?.onboardingSeen);
+          setFlagsLoading(false);
+        }
+      } catch (err) {
+        console.error("Could not read beta/onboarding flags:", err);
+
+        if (
+          err?.code === "unavailable" ||
+          err?.code === "failed-precondition" ||
+          err?.message?.toLowerCase().includes("offline")
+        ) {
+          setIsOffline(true);
+        }
+
+        if (!cancelled) {
+          setFlagsLoading(false);
+        }
+      }
+    };
+
+    loadFlags();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, user, connectionRetryKey, setIsOffline]);
 
   // ── Mark onboarding as done in Firestore ────────────────────────────────
   const markOnboardingSeen = async () => {
@@ -288,41 +325,69 @@ function AppShell() {
     setShowOnboarding(false);
   };
 
+  const markBetaProfileSeen = async (payload = {}) => {
+    if (!user) return;
+    setBetaSaving(true);
+    try {
+      await saveUserProfile(user, {
+        betaProfileSeen: true,
+        role: payload.role,
+        experienceLevel: payload.experienceLevel,
+        primaryUseCase: payload.primaryUseCase,
+        notes: payload.notes,
+      });
+
+      setShowBetaProfile(false);
+    } catch (err) {
+      console.error("Failed to save beta profile:", err);
+    } finally {
+      setBetaSaving(false);
+    }
+  };
+
   const goTo = (path) => {
     navigate(path);
     setSidebarOpen(false);
   };
 
   // ── Loading screen ──────────────────────────────────────────────────────
-  if (authLoading || (user && showOnboarding === null)) {
-    return (
-      <>
-        <style>{styles}</style>
+    // Build the body based on current state but always render the OfflinePopup at top-level
+    let body = null;
+
+    if (authLoading || flagsLoading) {
+      body = (
         <div style={{
           minHeight: "100vh", display: "grid", placeItems: "center",
           background: "#0b0f19", color: "#fff", fontSize: "1rem",
         }}>
           Loading...
         </div>
-      </>
-    );
-  }
-
-  // ── Auth wall ───────────────────────────────────────────────────────────
-  if (!user) {
-    return (
-      <>
-        <style>{styles}</style>
-        <PageAuth />
-      </>
-    );
-  }
-
-  // ── Onboarding ──────────────────────────────────────────────────────────
-  if (showOnboarding) {
-    return (
-      <>
-        <style>{styles}</style>
+      );
+    } else if (!user) {
+      body = <PageAuth />;
+    } else if (showBetaProfile) {
+      body = (
+        <div className="app-wrap">
+          <div className="grid-bg" />
+          <div
+            className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`}
+            onClick={() => setSidebarOpen(false)}
+          />
+          <Sidebar page="dashboard" setPage={goTo} isOpen={sidebarOpen} />
+          <div className="main-area">
+            <Topbar page="dashboard" onMenuClick={() => setSidebarOpen((o) => !o)} />
+            <main className="page-content">
+              <PageBetaProfile
+                saving={betaSaving}
+                onContinue={async (payload) => { await markBetaProfileSeen(payload); }}
+                onSkip={async () => { await markBetaProfileSeen({}); }}
+              />
+            </main>
+          </div>
+        </div>
+      );
+    } else if (showOnboarding) {
+      body = (
         <div className="app-wrap">
           <div className="grid-bg" />
           <div
@@ -340,44 +405,125 @@ function AppShell() {
             </main>
           </div>
         </div>
+      );
+    } else {
+      body = (
+        <div className="app-wrap">
+          <div className="grid-bg" />
+          <div
+            className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`}
+            onClick={() => setSidebarOpen(false)}
+          />
+          <Sidebar page={currentPage} setPage={goTo} isOpen={sidebarOpen} />
+          <div className="main-area">
+            <Topbar page={currentPage} onMenuClick={() => setSidebarOpen((o) => !o)} />
+            <SessionExpiryBanner />
+            <ReturnNotificationBanner />
+            <main className="page-content" key={location.pathname}>
+              <Routes>
+                <Route path="/dashboard"    element={<PageDashboard setPage={goTo} />} />
+                <Route path="/upload"       element={<PageUpload    setPage={goTo} />} />
+                <Route path="/overview"     element={<PageOverview />} />
+                <Route path="/insights"     element={<PageInsights />} />
+                <Route path="/visualization"element={<PageVisualization />} />
+                <Route path="/train"        element={<PageTrain />} />
+                <Route path="/report"       element={<PageReport />} />
+                <Route path="/predictions"  element={<PagePredictions />} />
+                <Route path="/cleaning"     element={<PageCleaning />} />
+                <Route path="/codegen"      element={<PageCodeGen />} />
+                <Route path="/settings"     element={<PageSettings />} />
+                <Route path="*"             element={<Navigate to="/dashboard" replace />} />
+              </Routes>
+            </main>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        <style>{styles}</style>
+        <OfflinePopup
+          open={isOffline}
+          onRetry={retryConnection}
+          retrying={retryingConnection}
+        />
+        {body}
       </>
     );
-  }
+}
 
-  // ── Main app ────────────────────────────────────────────────────────────
+function OfflinePopup({ open, onRetry, retrying }) {
+  if (!open) return null;
+
   return (
-    <>
-      <style>{styles}</style>
-      <div className="app-wrap">
-        <div className="grid-bg" />
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(9, 12, 20, 0.55)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9999,
+        padding: "20px",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 420,
+          background: "rgba(20, 24, 35, 0.92)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: 24,
+          boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
+          padding: "24px 22px",
+          color: "#fff",
+        }}
+      >
         <div
-          className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`}
-          onClick={() => setSidebarOpen(false)}
-        />
-        <Sidebar page={currentPage} setPage={goTo} isOpen={sidebarOpen} />
-        <div className="main-area">
-          <Topbar page={currentPage} onMenuClick={() => setSidebarOpen((o) => !o)} />
-          <SessionExpiryBanner />
-          <ReturnNotificationBanner />
-          <main className="page-content" key={location.pathname}>
-            <Routes>
-              <Route path="/dashboard"    element={<PageDashboard setPage={goTo} />} />
-              <Route path="/upload"       element={<PageUpload    setPage={goTo} />} />
-              <Route path="/overview"     element={<PageOverview />} />
-              <Route path="/insights"     element={<PageInsights />} />
-              <Route path="/visualization"element={<PageVisualization />} />
-              <Route path="/train"        element={<PageTrain />} />
-              <Route path="/report"       element={<PageReport />} />
-              <Route path="/predictions"  element={<PagePredictions />} />
-              <Route path="/cleaning"     element={<PageCleaning />} />
-              <Route path="/codegen"      element={<PageCodeGen />} />
-              <Route path="/settings"     element={<PageSettings />} />
-              <Route path="*"             element={<Navigate to="/dashboard" replace />} />
-            </Routes>
-          </main>
+          style={{
+            fontSize: 20,
+            fontWeight: 700,
+            marginBottom: 10,
+          }}
+        >
+          You are offline
+        </div>
+
+        <div
+          style={{
+            fontSize: 14,
+            lineHeight: 1.6,
+            color: "rgba(255,255,255,0.78)",
+            marginBottom: 20,
+          }}
+        >
+          DataPilot could not connect to the internet. Please check your connection and try again.
+        </div>
+
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button
+            onClick={onRetry}
+            disabled={retrying}
+            style={{
+              border: "none",
+              borderRadius: 14,
+              padding: "12px 18px",
+              background: "linear-gradient(135deg, #f59e0b, #fbbf24)",
+              color: "#111827",
+              fontWeight: 700,
+              cursor: retrying ? "not-allowed" : "pointer",
+              opacity: retrying ? 0.7 : 1,
+            }}
+          >
+            {retrying ? "Retrying..." : "Retry connection"}
+          </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 

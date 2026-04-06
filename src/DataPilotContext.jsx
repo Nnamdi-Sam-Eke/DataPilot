@@ -13,7 +13,7 @@ import {
   getUserProjects,
   deleteDataset,
 } from "./services/firestore";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, enableNetwork } from "firebase/firestore";
 import { db } from "./services/firebase";
 import { fetchSessionData } from "./services/data";
 
@@ -88,6 +88,61 @@ export function DataPilotProvider({ children }) {
   // ── Other state ───────────────────────────────────────────────────────
   const [cleanPreview,    setCleanPreviewRaw]    = useState(p?.cleanPreview    || null);
   const [previewLoading,  setPreviewLoadingRaw]  = useState(false);
+  // ── Offline / Network state ─────────────────────────────────────────────
+  const [isOffline, setIsOffline] = useState(() => !navigator.onLine);
+  const [retryingConnection, setRetryingConnection] = useState(false);
+  const [connectionRetryKey, setConnectionRetryKey] = useState(0);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  const retryConnection = useCallback(async () => {
+    try {
+      setRetryingConnection(true);
+      await enableNetwork(db);
+
+      // bump the retry key and let the next Firestore call confirm connectivity
+      setConnectionRetryKey((prev) => prev + 1);
+    } catch (error) {
+      console.error("Retry failed:", error);
+      setIsOffline(true);
+    } finally {
+      setRetryingConnection(false);
+    }
+  }, []);
+
+  // Auto-retry while offline
+  useEffect(() => {
+    if (!isOffline) return;
+
+    const iv = setInterval(() => {
+      retryConnection();
+    }, 5000);
+
+    return () => clearInterval(iv);
+  }, [isOffline, retryConnection]);
+
+  const markOfflineIfFirestoreErr = useCallback((error) => {
+    try {
+      if (
+        error?.code === "unavailable" ||
+        error?.code === "failed-precondition" ||
+        (error?.message && String(error.message).toLowerCase().includes("offline"))
+      ) {
+        setIsOffline(true);
+      }
+    } catch {}
+  }, []);
   const [modelId,         setModelIdRaw]         = useState(p?.modelId         || null);
   const [modelMeta,       setModelMetaRaw]       = useState(p?.modelMeta       || null);
   const [trainResults,    setTrainResultsRaw]    = useState(p?.trainResults    || null);
@@ -248,6 +303,7 @@ export function DataPilotProvider({ children }) {
           setUserProfileRaw(profileData);
         } catch (err) {
           console.error("Failed to load profile:", err);
+          markOfflineIfFirestoreErr(err);
         }
 
         // Load projects
@@ -256,6 +312,7 @@ export function DataPilotProvider({ children }) {
           setProjectsRaw(projectsData);
         } catch (err) {
           console.error("Failed to load projects:", err);
+          markOfflineIfFirestoreErr(err);
         }
 
         // Restore & validate sessions
@@ -329,6 +386,7 @@ export function DataPilotProvider({ children }) {
                 }
               } catch (err) {
                 console.error("Failed to rehydrate first dataset:", err);
+                markOfflineIfFirestoreErr(err);
                 setCleanPreviewRaw(null);
               } finally {
                 setPreviewLoadingRaw(false);
@@ -340,6 +398,7 @@ export function DataPilotProvider({ children }) {
           }
         } catch (err) {
           console.error("Failed to restore sessions:", err);
+          markOfflineIfFirestoreErr(err);
         }
       } else {
         setProjectsRaw([]);
@@ -361,7 +420,12 @@ export function DataPilotProvider({ children }) {
     const lastName    = (profile.lastName  || "").trim();
     const displayName = `${firstName} ${lastName}`.trim();
     if (cred?.user) {
-      await saveUserProfile(cred.user, { firstName, lastName, displayName });
+      await saveUserProfile(cred.user, {
+        firstName,
+        lastName,
+        displayName,
+        createdAt: serverTimestamp(),
+      });
       setUserProfileRaw((prev) => ({
         ...prev,
         firstName,
@@ -414,6 +478,7 @@ export function DataPilotProvider({ children }) {
         markSessionExpired(s.sessionId);
       } else {
         console.error(`Failed to load preview for session ${s.sessionId}:`, err);
+        markOfflineIfFirestoreErr(err);
         setCleanPreviewRaw(null);
       }
     } finally {
@@ -472,6 +537,7 @@ export function DataPilotProvider({ children }) {
         markSessionExpired(newSession.sessionId);
       } else {
         console.error("Failed to load preview for new session:", err);
+        markOfflineIfFirestoreErr(err);
         setCleanPreviewRaw(null);
       }
     } finally {
@@ -488,9 +554,10 @@ export function DataPilotProvider({ children }) {
     }
 
     if (sessionToRemove?.sessionId && user?.uid) {
-      deleteDataset(user.uid, sessionToRemove.sessionId).catch((err) =>
-        console.error("Failed to delete dataset from Firestore:", err)
-      );
+      deleteDataset(user.uid, sessionToRemove.sessionId).catch((err) => {
+        console.error("Failed to delete dataset from Firestore:", err);
+        try { markOfflineIfFirestoreErr(err); } catch {}
+      });
     }
 
     setSessionsRaw(updated);
@@ -551,6 +618,7 @@ export function DataPilotProvider({ children }) {
         markSessionExpired(s.sessionId);
       } else {
         console.error(`Failed to load preview for session ${s.sessionId}:`, err);
+        markOfflineIfFirestoreErr(err);
         setCleanPreviewRaw(null);
       }
     } finally {
@@ -631,6 +699,13 @@ export function DataPilotProvider({ children }) {
       projects,
       setProjects: setProjectsRaw,
 
+      // Offline/network state
+      isOffline,
+      setIsOffline,
+      retryConnection,
+      retryingConnection,
+      connectionRetryKey,
+
       reset,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -643,6 +718,7 @@ export function DataPilotProvider({ children }) {
       cleanOpLog, cleanFillStrategies, cleanRenameMap, cleanCastMap,
       cleanEncodeMap, cleanPromoted, groqKey, userProfile, theme, accentColor, projects,
       markSessionExpired, resetWorkspaceState, removeProjectSessions,
+      isOffline, retryingConnection, retryConnection, setIsOffline,
     ]
   );
 

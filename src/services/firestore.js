@@ -69,7 +69,35 @@ export async function saveUserProfile(user, extra = {}) {
     payload.displayName = resolvedDisplayName;
   }
 
-  payload.createdAt = serverTimestamp();
+  // onboarding flag
+  if (extra.onboardingSeen !== undefined) {
+    payload.onboardingSeen = extra.onboardingSeen;
+  }
+
+  // beta profile flag
+  if (extra.betaProfileSeen !== undefined) {
+    payload.betaProfileSeen = extra.betaProfileSeen;
+  }
+
+  // beta profile details
+  if (
+    extra.role !== undefined ||
+    extra.experienceLevel !== undefined ||
+    extra.primaryUseCase !== undefined ||
+    extra.notes !== undefined
+  ) {
+    payload.betaProfile = {
+      role: extra.role ?? "",
+      experienceLevel: extra.experienceLevel ?? "",
+      primaryUseCase: extra.primaryUseCase ?? "",
+      notes: extra.notes ?? "",
+      submittedAt: serverTimestamp(),
+    };
+  }
+
+  if (extra.createdAt !== undefined) {
+    payload.createdAt = extra.createdAt;
+  }
 
   await setDoc(userRef, payload, { merge: true });
 }
