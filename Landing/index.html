@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DataPilot — AI-Powered Data Analysis for Everyone</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --accent: #6c63ff;
+  --accent2: #a78bfa;
+  --accent3: #34d399;
+  --amber: #f59e0b;
+  --red: #f87171;
+  --cyan: #22d3ee;
+  --bg: #080c18;
+  --bg2: #0d1225;
+  --bg3: #131929;
+  --bg4: #1a2235;
+  --border: rgba(255,255,255,0.06);
+  --border2: rgba(108,99,255,0.2);
+  --text: #f0f2ff;
+  --text2: #a8b0cc;
+  --text3: #5c6680;
+  --glass: rgba(255,255,255,0.03);
+  --glass2: rgba(255,255,255,0.06);
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.4;
+}
+
+.grid-bg {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(108,99,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(108,99,255,0.04) 1px, transparent 1px);
+  background-size: 64px 64px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.orb { position: fixed; border-radius: 50%; filter: blur(100px); pointer-events: none; z-index: 0; }
+.orb-1 { width: 600px; height: 600px; background: rgba(108,99,255,0.12); top: -200px; right: -100px; }
+.orb-2 { width: 500px; height: 500px; background: rgba(167,139,250,0.07); bottom: 10%; left: -150px; }
+.orb-3 { width: 300px; height: 300px; background: rgba(52,211,153,0.06); top: 50%; right: 15%; }
+
+/* ─── NAV ─── */
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 48px;
+  height: 64px;
+  background: rgba(8,12,24,0.7);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.nav-logo-icon {
+  width: 32px; height: 32px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Syne', sans-serif;
+  font-size: 11px; font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.5px;
+  flex-shrink: 0;
+}
+.nav-logo-text {
+  font-family: 'Syne', sans-serif;
+  font-size: 16px; font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.3px;
+}
+.nav-logo-text span { color: var(--accent2); }
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  list-style: none;
+}
+.nav-links a {
+  font-size: 13.5px;
+  color: var(--text2);
+  text-decoration: none;
+  transition: color 0.2s;
+  font-weight: 450;
+}
+.nav-links a:hover { color: var(--text); }
+
+.nav-cta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* ─── BUTTONS — all fluid via clamp() ─── */
+.btn-ghost {
+  padding: 7px 15px;
+  border-radius: 8px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--accent2);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  line-height: 1;
+}
+.btn-ghost:hover { background: rgba(108,99,255,0.08); border-color: var(--accent2); }
+
+.btn-primary-sm {
+  padding: 7px 16px;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(135deg, var(--accent), #7c3aed);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 0 20px rgba(108,99,255,0.3);
+  white-space: nowrap;
+  line-height: 1;
+}
+.btn-primary-sm:hover { transform: translateY(-1px); box-shadow: 0 4px 30px rgba(108,99,255,0.45); }
+
+.btn-hero {
+  padding: 13px 28px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, var(--accent), #7c3aed);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.25s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 0 40px rgba(108,99,255,0.4), 0 4px 20px rgba(0,0,0,0.4);
+  text-decoration: none;
+  white-space: nowrap;
+  line-height: 1;
+}
+.btn-hero:hover { transform: translateY(-2px); box-shadow: 0 0 60px rgba(108,99,255,0.55), 0 8px 30px rgba(0,0,0,0.5); }
+.btn-hero svg { transition: transform 0.2s; flex-shrink: 0; }
+.btn-hero:hover svg { transform: translateX(3px); }
+
+.btn-hero-ghost {
+  padding: 13px 24px;
+  border-radius: 12px;
+  border: 1px solid var(--border2);
+  background: var(--glass);
+  color: var(--text2);
+  font-size: 15px;
+  font-weight: 500;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  backdrop-filter: blur(8px);
+  white-space: nowrap;
+  line-height: 1;
+}
+.btn-hero-ghost:hover { color: var(--text); border-color: rgba(108,99,255,0.4); background: var(--glass2); }
+
+/* ─── HERO ─── */
+.hero {
+  position: relative;
+  z-index: 1;
+  padding: 160px 48px 120px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px 5px 8px;
+  border-radius: 100px;
+  background: rgba(108,99,255,0.1);
+  border: 1px solid rgba(108,99,255,0.25);
+  font-size: 12px;
+  color: var(--accent2);
+  font-family: 'DM Mono', monospace;
+  letter-spacing: 0.04em;
+  margin-bottom: 32px;
+  animation: fadeUp 0.6s ease both;
+}
+.hero-eyebrow-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent3);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.hero-title {
+  font-family: 'Syne', sans-serif;
+  font-size: clamp(48px, 7vw, 88px);
+  font-weight: 800;
+  line-height: 1.0;
+  letter-spacing: -2.5px;
+  margin-bottom: 28px;
+  animation: fadeUp 0.7s 0.1s ease both;
+}
+.hero-title .line-1 { display: block; color: var(--text); }
+.hero-title .line-2 { display: block; color: var(--text); }
+.hero-title .line-accent {
+  display: block;
+  background: linear-gradient(90deg, var(--accent), var(--accent2), var(--cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-sub {
+  font-size: 18px;
+  line-height: 1.7;
+  color: var(--text2);
+  max-width: 540px;
+  margin-bottom: 44px;
+  font-weight: 400;
+  animation: fadeUp 0.7s 0.2s ease both;
+}
+
+.hero-ctas {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  animation: fadeUp 0.7s 0.3s ease both;
+}
+
+.hero-trust {
+  margin-top: 56px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12.5px;
+  color: var(--text3);
+  animation: fadeUp 0.7s 0.4s ease both;
+  flex-wrap: wrap;
+}
+.hero-trust-avatars { display: flex; }
+.hero-trust-avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+  margin-left: -8px;
+  font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Syne', sans-serif;
+}
+.hero-trust-avatar:first-child { margin-left: 0; }
+
+/* ─── HERO VISUAL ─── */
+.hero-visual {
+  position: relative;
+  z-index: 1;
+  margin: 0 auto;
+  max-width: 1100px;
+  padding: 0 48px 100px;
+  animation: fadeUp 0.9s 0.4s ease both;
+}
+
+.dashboard-mockup {
+  border-radius: 20px;
+  background: var(--bg2);
+  border: 1px solid rgba(255,255,255,0.08);
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(108,99,255,0.1), 0 40px 120px rgba(0,0,0,0.6), 0 0 80px rgba(108,99,255,0.08);
+  position: relative;
+}
+
+.mockup-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: rgba(8,12,24,0.8);
+  border-bottom: 1px solid var(--border);
+}
+.mockup-dots { display: flex; gap: 6px; }
+.mockup-dot { width: 10px; height: 10px; border-radius: 50%; }
+.mockup-dot-r { background: #ff5f57; }
+.mockup-dot-y { background: #febc2e; }
+.mockup-dot-g { background: #28c840; }
+.mockup-title { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text3); }
+.mockup-status { display: flex; align-items: center; gap: 6px; font-family: 'DM Mono', monospace; font-size: 10px; color: var(--accent3); }
+.mockup-status-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent3); animation: pulse 2s infinite; }
+
+.mockup-body { display: grid; grid-template-columns: 180px 1fr; min-height: 380px; }
+
+.mockup-sidebar { background: rgba(8,12,24,0.6); border-right: 1px solid var(--border); padding: 16px 0; }
+.mockup-nav-section { padding: 0 12px; margin-bottom: 16px; }
+.mockup-nav-label { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.1em; padding: 0 8px; margin-bottom: 6px; }
+.mockup-nav-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 7px; font-size: 11px; color: var(--text3); margin-bottom: 1px; }
+.mockup-nav-item.active { background: rgba(108,99,255,0.15); color: var(--accent2); }
+.mockup-nav-icon { width: 13px; height: 13px; border-radius: 3px; background: currentColor; opacity: 0.3; flex-shrink: 0; }
+.mockup-nav-item.active .mockup-nav-icon { opacity: 0.7; }
+
+.mockup-content { padding: 20px; display: flex; flex-direction: column; gap: 16px; overflow: hidden; }
+
+.mockup-stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.mockup-stat { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.mockup-stat-label { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+.mockup-stat-val { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; }
+.mockup-stat-sub { font-size: 9px; color: var(--text3); margin-top: 2px; }
+
+.mockup-charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mockup-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+.mockup-card-title { font-family: 'DM Mono', monospace; font-size: 9.5px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 12px; }
+
+.bar-chart { display: flex; align-items: flex-end; gap: 5px; height: 70px; }
+.bar { flex: 1; border-radius: 4px 4px 0 0; background: linear-gradient(to top, var(--accent), var(--accent2)); opacity: 0.7; animation: barGrow 1s ease both; }
+@keyframes barGrow { from { transform: scaleY(0); transform-origin: bottom; } to { transform: scaleY(1); transform-origin: bottom; } }
+.bar:nth-child(1){animation-delay:0.1s}.bar:nth-child(2){animation-delay:0.15s}.bar:nth-child(3){animation-delay:0.2s}.bar:nth-child(4){animation-delay:0.25s}.bar:nth-child(5){animation-delay:0.3s}.bar:nth-child(6){animation-delay:0.35s}.bar:nth-child(7){animation-delay:0.4s}
+
+.ai-chat-preview { display: flex; flex-direction: column; gap: 8px; }
+.chat-msg { display: flex; gap: 8px; align-items: flex-start; }
+.chat-avatar-mini { width: 20px; height: 20px; border-radius: 6px; background: linear-gradient(135deg,var(--accent),var(--accent2)); display: flex; align-items: center; justify-content: center; font-size: 9px; color: #fff; flex-shrink: 0; font-weight: 700; }
+.chat-bubble-mini { padding: 6px 10px; border-radius: 8px; font-size: 10px; line-height: 1.5; max-width: 85%; }
+.chat-bubble-mini.ai { background: var(--bg4); color: var(--text2); border: 1px solid var(--border); }
+.chat-bubble-mini.user { background: rgba(108,99,255,0.15); color: var(--accent2); border: 1px solid rgba(108,99,255,0.2); margin-left: auto; }
+
+.mockup-glow { position: absolute; bottom: -60px; left: 50%; transform: translateX(-50%); width: 70%; height: 60px; background: rgba(108,99,255,0.25); filter: blur(40px); border-radius: 50%; }
+
+/* ─── SECTIONS ─── */
+section { position: relative; z-index: 1; }
+.container { max-width: 1200px; margin: 0 auto; padding: 0 48px; }
+
+.section-eyebrow { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--accent2); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 14px; }
+.section-title { font-family: 'Syne', sans-serif; font-size: clamp(30px, 4vw, 52px); font-weight: 800; letter-spacing: -1.5px; line-height: 1.08; margin-bottom: 16px; color: var(--text); }
+.section-sub { font-size: 16px; color: var(--text2); line-height: 1.7; max-width: 500px; }
+
+/* ─── MARQUEE ─── */
+.marquee-section { padding: 0 0 80px; overflow: hidden; }
+.marquee-label { text-align: center; font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text3); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 28px; }
+.marquee-track { display: flex; overflow: hidden; mask-image: linear-gradient(to right, transparent, black 15%, black 85%, transparent); }
+.marquee-inner { display: flex; gap: 12px; animation: marquee 25s linear infinite; white-space: nowrap; flex-shrink: 0; }
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.marquee-chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 16px; border-radius: 100px; background: var(--bg3); border: 1px solid var(--border); font-size: 12px; color: var(--text2); white-space: nowrap; flex-shrink: 0; }
+.marquee-chip-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+/* ─── HOW IT WORKS ─── */
+.how-section { padding: 100px 0; }
+.how-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; margin-top: 64px; position: relative; }
+.how-step { padding: 32px 28px; background: var(--glass); border: 1px solid var(--border); border-radius: 16px; position: relative; transition: all 0.25s; }
+.how-step:hover { background: rgba(108,99,255,0.05); border-color: rgba(108,99,255,0.2); transform: translateY(-3px); }
+.how-step-num { font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 700; color: var(--accent2); letter-spacing: 0.1em; margin-bottom: 16px; }
+.how-step-icon { width: 48px; height: 48px; border-radius: 12px; background: rgba(108,99,255,0.1); border: 1px solid rgba(108,99,255,0.2); display: flex; align-items: center; justify-content: center; margin-bottom: 20px; }
+.how-step-title { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 10px; letter-spacing: -0.3px; }
+.how-step-desc { font-size: 13px; color: var(--text2); line-height: 1.65; }
+
+/* ─── FEATURES ─── */
+.features-section { padding: 100px 0; }
+.features-header { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: end; margin-bottom: 56px; }
+.features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.feature-card { padding: 28px; background: var(--glass); border: 1px solid var(--border); border-radius: 16px; transition: all 0.25s; position: relative; overflow: hidden; }
+.feature-card::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 0% 0%, rgba(108,99,255,0.08) 0%, transparent 60%); opacity: 0; transition: opacity 0.3s; }
+.feature-card:hover::before { opacity: 1; }
+.feature-card:hover { border-color: rgba(108,99,255,0.25); transform: translateY(-4px); box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+.feature-card.wide { grid-column: span 2; }
+.feature-icon { width: 44px; height: 44px; border-radius: 11px; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; font-size: 20px; }
+.feature-title { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 10px; letter-spacing: -0.3px; }
+.feature-desc { font-size: 13.5px; color: var(--text2); line-height: 1.65; }
+.feature-tag { display: inline-block; margin-top: 16px; padding: 3px 10px; border-radius: 100px; font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.05em; }
+
+/* ─── AI CHAT ─── */
+.ai-section { padding: 100px 0; }
+.ai-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
+.ai-chat-demo { background: var(--bg2); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; box-shadow: 0 20px 80px rgba(0,0,0,0.4); }
+.ai-chat-header { display: flex; align-items: center; gap: 10px; padding: 14px 20px; background: rgba(8,12,24,0.6); border-bottom: 1px solid var(--border); }
+.ai-chat-header-icon { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg,var(--accent),var(--accent2)); display: flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; font-weight: 700; }
+.ai-chat-header-text { font-size: 12.5px; color: var(--text2); font-weight: 500; }
+.ai-chat-messages { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.ai-msg { display: flex; gap: 10px; align-items: flex-start; }
+.ai-msg.user { flex-direction: row-reverse; }
+.ai-msg-avatar { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+.ai-msg-avatar.ai { background: linear-gradient(135deg,var(--accent),var(--accent2)); color: #fff; }
+.ai-msg-avatar.user { background: var(--bg4); color: var(--text2); border: 1px solid var(--border); }
+.ai-msg-bubble { padding: 10px 14px; border-radius: 12px; font-size: 12.5px; line-height: 1.6; max-width: 82%; }
+.ai-msg-bubble.ai { background: var(--bg3); border: 1px solid var(--border); color: var(--text2); }
+.ai-msg-bubble.user { background: rgba(108,99,255,0.15); border: 1px solid rgba(108,99,255,0.2); color: var(--accent2); }
+.ai-msg-bubble strong { color: var(--text); font-weight: 600; }
+.ai-chat-input { display: flex; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--border); }
+.ai-chat-input-field { flex: 1; background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 12px; color: var(--text3); font-family: 'DM Sans', sans-serif; }
+.ai-chat-send { padding: 8px 14px; border-radius: 8px; background: linear-gradient(135deg,var(--accent),#7c3aed); border: none; color: #fff; font-size: 11px; font-weight: 600; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.ai-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 32px; }
+.ai-pill { padding: 7px 14px; border-radius: 100px; background: var(--bg3); border: 1px solid var(--border); font-size: 12px; color: var(--text2); cursor: pointer; transition: all 0.15s; font-family: 'DM Mono', monospace; }
+.ai-pill:hover { border-color: var(--border2); color: var(--accent2); }
+
+/* ─── METRICS ─── */
+.metrics-section { padding: 80px 0; }
+.metrics-inner { background: linear-gradient(135deg, rgba(108,99,255,0.08), rgba(167,139,250,0.05)); border: 1px solid rgba(108,99,255,0.15); border-radius: 24px; padding: 64px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 48px; text-align: center; position: relative; overflow: hidden; }
+.metrics-inner::before { content: ''; position: absolute; top: -50px; left: 50%; transform: translateX(-50%); width: 400px; height: 200px; background: rgba(108,99,255,0.1); filter: blur(60px); border-radius: 50%; }
+.metric-val { font-family: 'Syne', sans-serif; font-size: 48px; font-weight: 800; letter-spacing: -2px; background: linear-gradient(135deg, var(--text), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 6px; }
+.metric-label { font-size: 13px; color: var(--text3); font-weight: 500; }
+
+/* ─── PRICING ─── */
+.pricing-section { padding: 100px 0; }
+.pricing-header { text-align: center; margin-bottom: 56px; }
+.pricing-header .section-sub { margin: 0 auto; }
+.pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; max-width: 900px; margin: 0 auto; }
+.pricing-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 20px; padding: 32px; position: relative; transition: all 0.25s; }
+.pricing-card:hover { transform: translateY(-4px); }
+.pricing-card.featured { background: linear-gradient(160deg, rgba(108,99,255,0.12), rgba(108,99,255,0.06)); border-color: rgba(108,99,255,0.35); box-shadow: 0 0 60px rgba(108,99,255,0.1); }
+.pricing-badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); padding: 4px 14px; border-radius: 100px; background: linear-gradient(135deg, var(--accent), var(--accent2)); font-size: 10px; font-weight: 700; color: #fff; white-space: nowrap; font-family: 'DM Mono', monospace; letter-spacing: 0.05em; }
+.pricing-plan { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text3); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 12px; }
+.pricing-price { font-family: 'Syne', sans-serif; font-size: 42px; font-weight: 800; letter-spacing: -2px; color: var(--text); margin-bottom: 4px; }
+.pricing-price sup { font-size: 20px; letter-spacing: 0; }
+.pricing-price-sub { font-size: 12px; color: var(--text3); margin-bottom: 28px; }
+.pricing-divider { height: 1px; background: var(--border); margin: 24px 0; }
+.pricing-features { list-style: none; display: flex; flex-direction: column; gap: 12px; margin-bottom: 28px; }
+.pricing-feature { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text2); }
+.pricing-feature-icon { width: 16px; height: 16px; border-radius: 50%; background: rgba(52,211,153,0.15); border: 1px solid rgba(52,211,153,0.3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 9px; color: var(--accent3); }
+.pricing-btn { width: 100%; padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 600; font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.2s; }
+.pricing-btn-outline { background: transparent; border: 1px solid var(--border2); color: var(--accent2); }
+.pricing-btn-outline:hover { background: rgba(108,99,255,0.08); }
+.pricing-btn-filled { background: linear-gradient(135deg, var(--accent), #7c3aed); border: none; color: #fff; box-shadow: 0 0 30px rgba(108,99,255,0.35); }
+.pricing-btn-filled:hover { box-shadow: 0 0 50px rgba(108,99,255,0.5); transform: translateY(-1px); }
+
+/* ─── CTA ─── */
+.cta-section { padding: 80px 0 120px; }
+.cta-inner { text-align: center; position: relative; padding: 80px 48px; border-radius: 28px; background: linear-gradient(160deg, var(--bg2), var(--bg3)); border: 1px solid var(--border); overflow: hidden; }
+.cta-inner::before { content: ''; position: absolute; top: -60px; left: 50%; transform: translateX(-50%); width: 600px; height: 300px; background: radial-gradient(ellipse, rgba(108,99,255,0.18) 0%, transparent 70%); pointer-events: none; }
+.cta-eyebrow { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--accent2); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 20px; }
+.cta-title { font-family: 'Syne', sans-serif; font-size: clamp(32px, 5vw, 62px); font-weight: 800; letter-spacing: -2px; line-height: 1.05; margin-bottom: 20px; color: var(--text); }
+.cta-sub { font-size: 16px; color: var(--text2); max-width: 460px; margin: 0 auto 40px; line-height: 1.6; }
+.cta-ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+/* ─── FOOTER ─── */
+footer { position: relative; z-index: 1; border-top: 1px solid var(--border); padding: 48px; display: flex; align-items: center; justify-content: space-between; max-width: 1200px; margin: 0 auto; flex-wrap: wrap; gap: 24px; }
+.footer-copy { font-size: 12px; color: var(--text3); }
+.footer-links { display: flex; gap: 24px; flex-wrap: wrap; }
+.footer-links a { font-size: 12px; color: var(--text3); text-decoration: none; transition: color 0.2s; }
+.footer-links a:hover { color: var(--text2); }
+
+/* ─── ANIMATIONS ─── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-up { opacity: 0; transform: translateY(30px); transition: opacity 0.6s ease, transform 0.6s ease; }
+.fade-up.visible { opacity: 1; transform: translateY(0); }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+
+/* ════════════════════════════════════════
+   RESPONSIVE
+   ════════════════════════════════════════ */
+
+/* ── Tablet ── */
+@media (max-width: 900px) {
+  nav { padding: 0 24px; }
+  .nav-links { display: none; }
+  .nav-cta { gap: 8px; }
+
+  .hero { padding: 110px 24px 80px; }
+  .hero-sub { font-size: 16px; }
+  .hero-visual { padding: 0 24px 60px; }
+
+  .container { padding: 0 24px; }
+
+  .how-steps { grid-template-columns: 1fr 1fr; }
+
+  .features-header { grid-template-columns: 1fr; gap: 24px; }
+  .features-grid { grid-template-columns: 1fr 1fr; }
+  .feature-card.wide { grid-column: span 2; }
+
+  .ai-inner { grid-template-columns: 1fr; gap: 40px; }
+
+  .metrics-inner { grid-template-columns: 1fr 1fr; gap: 32px; padding: 40px; }
+
+  .pricing-grid { grid-template-columns: 1fr; max-width: 420px; margin: 0 auto; }
+
+  .mockup-body { grid-template-columns: 1fr; }
+  .mockup-sidebar { display: none; }
+
+  .cta-inner { padding: 56px 32px; }
+
+  footer { flex-direction: column; align-items: flex-start; padding: 36px 24px; }
+}
+
+/* ── Mobile ── */
+@media (max-width: 600px) {
+  nav { padding: 0 16px; height: 56px; }
+  .nav-logo-icon { width: 28px; height: 28px; font-size: 10px; }
+  .nav-logo-text { font-size: 14px; }
+
+  /* Nav CTA buttons — compact */
+  .btn-ghost {
+    padding: 5px 10px;
+    font-size: 11px;
+    border-radius: 7px;
+  }
+  .btn-primary-sm {
+    padding: 5px 11px;
+    font-size: 11px;
+    border-radius: 7px;
+  }
+  /* Hide the arrow SVG in nav Join Beta on very small screens */
+  .btn-primary-sm svg { display: none; }
+
+  /* Hero */
+  .hero { padding: 88px 18px 60px; }
+  .hero-eyebrow { font-size: 10px; padding: 4px 10px 4px 7px; }
+  .hero-title { letter-spacing: -1.5px; }
+  .hero-sub { font-size: 14.5px; margin-bottom: 28px; }
+
+  /* Hero CTAs — stack full width */
+  .hero-ctas { flex-direction: column; align-items: stretch; gap: 10px; }
+  .btn-hero {
+    justify-content: center;
+    padding: 13px 20px;
+    font-size: 14px;
+    border-radius: 10px;
+    width: 100%;
+  }
+  .btn-hero-ghost {
+    justify-content: center;
+    padding: 12px 20px;
+    font-size: 14px;
+    border-radius: 10px;
+    width: 100%;
+  }
+
+  .hero-trust { flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 36px; }
+  .hero-visual { padding: 0 16px 48px; }
+
+  /* Mockup */
+  .mockup-stats-row { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .mockup-charts-row { grid-template-columns: 1fr; }
+
+  /* How */
+  .how-steps { grid-template-columns: 1fr; gap: 10px; }
+  .how-step { padding: 22px 18px; }
+  .how-section { padding: 70px 0; }
+
+  /* Features */
+  .container { padding: 0 18px; }
+  .features-section { padding: 70px 0; }
+  .features-grid { grid-template-columns: 1fr; }
+  .feature-card.wide { grid-column: span 1; }
+  .feature-card { padding: 22px; }
+  .section-title { letter-spacing: -1px; }
+
+  /* AI pills */
+  .ai-pills { gap: 6px; }
+  .ai-pill { font-size: 11px; padding: 5px 10px; }
+  .ai-section { padding: 70px 0; }
+
+  /* Metrics */
+  .metrics-section { padding: 56px 0; }
+  .metrics-inner { grid-template-columns: 1fr 1fr; gap: 20px; padding: 28px 20px; border-radius: 16px; }
+  .metric-val { font-size: 34px; }
+  .metric-label { font-size: 11px; }
+
+  /* Pricing */
+  .pricing-section { padding: 70px 0; }
+  .pricing-grid { max-width: 100%; }
+  .pricing-card { padding: 24px 18px; }
+  .pricing-price { font-size: 36px; }
+  .pricing-btn { font-size: 13px; padding: 11px; }
+
+  /* CTA */
+  .cta-section { padding: 48px 0 72px; }
+  .cta-inner { padding: 44px 18px; border-radius: 18px; }
+  .cta-ctas { flex-direction: column; align-items: stretch; gap: 10px; }
+  .cta-ctas .btn-hero,
+  .cta-ctas .btn-hero-ghost {
+    justify-content: center;
+    width: 100%;
+    padding: 13px 20px;
+    font-size: 14px;
+    border-radius: 10px;
+  }
+
+  /* Footer */
+  footer { padding: 28px 18px; gap: 14px; }
+  .footer-links { gap: 14px; }
+}
+</style>
+</head>
+<body>
+
+<div class="grid-bg"></div>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+
+<!-- ─── NAV ─── -->
+<nav>
+  <a href="#" class="nav-logo">
+    <div class="nav-logo-icon">dp</div>
+    <div class="nav-logo-text">Data<span>Pilot</span></div>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#features">Features</a></li>
+    <li><a href="#how">How it works</a></li>
+    <li><a href="#pricing">Pricing</a></li>
+  </ul>
+  <div class="nav-cta">
+    <a href="#" class="btn-ghost">Sign in</a>
+    <a href="https://creatives-takeover.com/w/datapilot-beta" target="_blank" class="btn-primary-sm">
+      Join Beta
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </a>
+  </div>
+</nav>
+
+<!-- ─── HERO ─── -->
+<section>
+  <div class="hero">
+    <div class="hero-eyebrow">
+      <div class="hero-eyebrow-dot"></div>
+      Beta Access Now Open · No-Code AI Analytics
+    </div>
+    <h1 class="hero-title">
+      <span class="line-1">Your Data.</span>
+      <span class="line-2">Full Clarity.</span>
+      <span class="line-accent">Zero Code.</span>
+    </h1>
+    <p class="hero-sub">
+      DataPilot is the AI-powered analysis workspace built for analysts, consultants, and businesses across Africa and the Global South — turning raw data into sharp, confident decisions.
+    </p>
+    <div class="hero-ctas">
+      <a href="https://creatives-takeover.com/w/datapilot-beta" target="_blank" class="btn-hero">
+        Get Early Access
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </a>
+      <a href="#how" class="btn-hero-ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+        See how it works
+      </a>
+    </div>
+    <div class="hero-trust">
+      <div class="hero-trust-avatars">
+        <div class="hero-trust-avatar" style="background:linear-gradient(135deg,#6c63ff,#a78bfa)">N</div>
+        <div class="hero-trust-avatar" style="background:linear-gradient(135deg,#34d399,#059669)">A</div>
+        <div class="hero-trust-avatar" style="background:linear-gradient(135deg,#f59e0b,#d97706)">K</div>
+        <div class="hero-trust-avatar" style="background:linear-gradient(135deg,#f87171,#dc2626)">T</div>
+        <div class="hero-trust-avatar" style="background:linear-gradient(135deg,#22d3ee,#0891b2)">B</div>
+      </div>
+      <span>Trusted by early beta users across Lagos, Nairobi &amp; Accra</span>
+    </div>
+  </div>
+</section>
+
+<!-- ─── MOCKUP ─── -->
+<div class="hero-visual">
+  <div class="dashboard-mockup">
+    <div class="mockup-topbar">
+      <div class="mockup-dots">
+        <div class="mockup-dot mockup-dot-r"></div>
+        <div class="mockup-dot mockup-dot-y"></div>
+        <div class="mockup-dot mockup-dot-g"></div>
+      </div>
+      <div class="mockup-title">datapilot / Dashboard</div>
+      <div class="mockup-status"><div class="mockup-status-dot"></div>Backend online</div>
+    </div>
+    <div class="mockup-body">
+      <div class="mockup-sidebar">
+        <div class="mockup-nav-section">
+          <div class="mockup-nav-label">Workspace</div>
+          <div class="mockup-nav-item active"><div class="mockup-nav-icon"></div>Dashboard</div>
+          <div class="mockup-nav-item"><div class="mockup-nav-icon"></div>Upload Data</div>
+          <div class="mockup-nav-item"><div class="mockup-nav-icon"></div>Data Overview</div>
+          <div class="mockup-nav-item"><div class="mockup-nav-icon"></div>Data Cleaning</div>
+          <div class="mockup-nav-item"><div class="mockup-nav-icon"></div>Ask DataPilot</div>
+        </div>
+        <div class="mockup-nav-section">
+          <div class="mockup-nav-label">Analysis</div>
+          <div class="mockup-nav-item"><div class="mockup-nav-icon"></div>Visualizations</div>
+          <div class="mockup-nav-item"><div class="mockup-nav-icon"></div>Train Model</div>
+          <div class="mockup-nav-item"><div class="mockup-nav-icon"></div>Predictions</div>
+          <div class="mockup-nav-item"><div class="mockup-nav-icon"></div>Reports</div>
+        </div>
+      </div>
+      <div class="mockup-content">
+        <div class="mockup-stats-row">
+          <div class="mockup-stat">
+            <div class="mockup-stat-label">Total Rows</div>
+            <div class="mockup-stat-val" style="color:var(--accent2)">48,291</div>
+            <div class="mockup-stat-sub">↑ 12.4% this week</div>
+          </div>
+          <div class="mockup-stat">
+            <div class="mockup-stat-label">Columns</div>
+            <div class="mockup-stat-val" style="color:var(--accent3)">24</div>
+            <div class="mockup-stat-sub">3 numeric · 21 categorical</div>
+          </div>
+          <div class="mockup-stat">
+            <div class="mockup-stat-label">Model Accuracy</div>
+            <div class="mockup-stat-val" style="color:var(--cyan)">94.7%</div>
+            <div class="mockup-stat-sub">XGBoost · classification</div>
+          </div>
+          <div class="mockup-stat">
+            <div class="mockup-stat-label">Predictions</div>
+            <div class="mockup-stat-val" style="color:var(--amber)">8,142</div>
+            <div class="mockup-stat-sub">Last run: 2h ago</div>
+          </div>
+        </div>
+        <div class="mockup-charts-row">
+          <div class="mockup-card">
+            <div class="mockup-card-title">Distribution Overview</div>
+            <div class="bar-chart">
+              <div class="bar" style="height:45%"></div>
+              <div class="bar" style="height:70%"></div>
+              <div class="bar" style="height:55%"></div>
+              <div class="bar" style="height:90%"></div>
+              <div class="bar" style="height:65%"></div>
+              <div class="bar" style="height:80%"></div>
+              <div class="bar" style="height:40%"></div>
+            </div>
+          </div>
+          <div class="mockup-card">
+            <div class="mockup-card-title">Ask DataPilot — AI Chat</div>
+            <div class="ai-chat-preview">
+              <div class="chat-msg">
+                <div class="chat-avatar-mini">✦</div>
+                <div class="chat-bubble-mini ai">3 columns have &gt;15% missing values.</div>
+              </div>
+              <div class="chat-msg">
+                <div class="chat-bubble-mini user">Which features matter most?</div>
+              </div>
+              <div class="chat-msg">
+                <div class="chat-avatar-mini">✦</div>
+                <div class="chat-bubble-mini ai"><strong>Revenue</strong> and <strong>Region</strong> drive 68% of variance.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup-glow"></div>
+  </div>
+</div>
+
+<!-- ─── MARQUEE ─── -->
+<div class="marquee-section">
+  <div class="marquee-label">Everything your analysis workflow needs</div>
+  <div class="marquee-track">
+    <div class="marquee-inner">
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--accent2)"></span>AI Chat Interface</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--accent3)"></span>CSV &amp; Excel Upload</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--cyan)"></span>Random Forest</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--amber)"></span>XGBoost Training</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--red)"></span>Data Cleaning</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--accent2)"></span>Visualizations</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--accent3)"></span>Python Code Export</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--cyan)"></span>Predictions Engine</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--amber)"></span>PDF Reports</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--accent2)"></span>Logistic Regression</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--red)"></span>Feature Importance</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--accent3)"></span>Confusion Matrix</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--cyan)"></span>Session Management</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--accent2)"></span>AI Chat Interface</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--accent3)"></span>CSV &amp; Excel Upload</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--cyan)"></span>Random Forest</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--amber)"></span>XGBoost Training</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--red)"></span>Data Cleaning</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--accent2)"></span>Visualizations</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--accent3)"></span>Python Code Export</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--cyan)"></span>Predictions Engine</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--amber)"></span>PDF Reports</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--accent2)"></span>Logistic Regression</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--red)"></span>Feature Importance</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--accent3)"></span>Confusion Matrix</span>
+      <span class="marquee-chip"><span class="marquee-chip-dot" style="background:var(--cyan)"></span>Session Management</span>
+    </div>
+  </div>
+</div>
+
+<!-- ─── HOW IT WORKS ─── -->
+<section class="how-section" id="how">
+  <div class="container">
+    <div class="section-eyebrow">How It Works</div>
+    <h2 class="section-title">From upload to insight<br/>in four steps.</h2>
+    <div class="how-steps fade-up">
+      <div class="how-step">
+        <div class="how-step-num">01 ///</div>
+        <div class="how-step-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <div class="how-step-title">Upload Your Data</div>
+        <div class="how-step-desc">Drop in a CSV or Excel file. DataPilot instantly parses, profiles, and loads your dataset into the workspace.</div>
+      </div>
+      <div class="how-step">
+        <div class="how-step-num">02 ///</div>
+        <div class="how-step-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <div class="how-step-title">Clean &amp; Explore</div>
+        <div class="how-step-desc">Fix missing values, remove duplicates, and explore distributions — all with a point-and-click interface. No pandas needed.</div>
+      </div>
+      <div class="how-step">
+        <div class="how-step-num">03 ///</div>
+        <div class="how-step-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent3)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+        </div>
+        <div class="how-step-title">Ask &amp; Analyze</div>
+        <div class="how-step-desc">Ask questions in plain English. DataPilot's AI surfaces patterns, correlations, and anomalies you'd spend hours finding manually.</div>
+      </div>
+      <div class="how-step">
+        <div class="how-step-num">04 ///</div>
+        <div class="how-step-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        </div>
+        <div class="how-step-title">Predict &amp; Export</div>
+        <div class="how-step-desc">Train ML models, score new data, generate reports, and export clean Python code — ready for production.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── FEATURES ─── -->
+<section class="features-section" id="features">
+  <div class="container">
+    <div class="features-header">
+      <div>
+        <div class="section-eyebrow">Features</div>
+        <h2 class="section-title">A complete data<br/>science workspace.</h2>
+      </div>
+      <div class="section-sub">
+        Every tool you need — from raw file to trained model — in one cohesive platform. Built for analysts who think in business problems, not code.
+      </div>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card wide fade-up">
+        <div class="feature-icon" style="background:rgba(108,99,255,0.12);border:1px solid rgba(108,99,255,0.25)">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        </div>
+        <div class="feature-title">Ask DataPilot — AI Chat</div>
+        <div class="feature-desc">Natural language queries powered by Llama 3.3. Ask what you'd ask a senior analyst — "Which columns correlate with churn?" or "What's causing the spike in week 3?" — and get precise, context-aware answers about your actual dataset.</div>
+        <span class="feature-tag" style="background:rgba(108,99,255,0.1);border:1px solid rgba(108,99,255,0.2);color:var(--accent2)">Powered by Llama 3.3-70B</span>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon" style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.2)">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent3)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <div class="feature-title">Intelligent Data Cleaning</div>
+        <div class="feature-desc">Detect and fix missing values, outliers, and type mismatches. Full undo stack so you never lose your original data.</div>
+        <span class="feature-tag" style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);color:var(--accent3)">One-click fixes</span>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon" style="background:rgba(34,211,238,0.1);border:1px solid rgba(34,211,238,0.2)">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        </div>
+        <div class="feature-title">ML Model Training</div>
+        <div class="feature-desc">Train Random Forest, XGBoost, Logistic Regression, or SVM models with a slider interface. See accuracy, F1, confusion matrices.</div>
+        <span class="feature-tag" style="background:rgba(34,211,238,0.08);border:1px solid rgba(34,211,238,0.2);color:var(--cyan)">4 algorithms</span>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2)">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        </div>
+        <div class="feature-title">Rich Visualizations</div>
+        <div class="feature-desc">Auto-generated charts tailored to your data types — histograms, scatter plots, correlation heatmaps, and more.</div>
+        <span class="feature-tag" style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);color:var(--amber)">Auto-generated</span>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon" style="background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.2)">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <div class="feature-title">Python Code Export</div>
+        <div class="feature-desc">Every cleaning step and analysis operation generates exportable Python code. Take your work from DataPilot into production without rewriting a line.</div>
+        <span class="feature-tag" style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);color:var(--red)">Production-ready</span>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon" style="background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.2)">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <div class="feature-title">Report Generation</div>
+        <div class="feature-desc">Generate polished PDF reports summarising your data, cleaning steps, model performance, and predictions — ready to share with clients.</div>
+        <span class="feature-tag" style="background:rgba(167,139,250,0.08);border:1px solid rgba(167,139,250,0.2);color:var(--accent2)">Share-ready PDFs</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── AI CHAT SECTION ─── -->
+<section class="ai-section">
+  <div class="container">
+    <div class="ai-inner">
+      <div>
+        <div class="section-eyebrow">AI Intelligence</div>
+        <h2 class="section-title">Your data,<br/>answered.</h2>
+        <p class="section-sub" style="margin-bottom:24px">
+          Stop writing SQL or Python just to ask simple questions. DataPilot reads your dataset and answers in plain English — patterns, outliers, correlations, and next steps.
+        </p>
+        <div class="ai-pills">
+          <span class="ai-pill">Key patterns?</span>
+          <span class="ai-pill">Best model?</span>
+          <span class="ai-pill">Data quality issues?</span>
+          <span class="ai-pill">Correlations?</span>
+          <span class="ai-pill">Summarise stats</span>
+        </div>
+      </div>
+      <div class="ai-chat-demo fade-up">
+        <div class="ai-chat-header">
+          <div class="ai-chat-header-icon">✦</div>
+          <div class="ai-chat-header-text">Ask DataPilot — AI Chat</div>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-family:'DM Mono',monospace;font-size:10px;color:var(--accent3)">
+            <div style="width:5px;height:5px;border-radius:50%;background:var(--accent3);animation:pulse 2s infinite"></div>
+            AI Ready
+          </div>
+        </div>
+        <div class="ai-chat-messages">
+          <div class="ai-msg">
+            <div class="ai-msg-avatar ai">✦</div>
+            <div class="ai-msg-bubble ai">Hey! I've analyzed your <strong>sales_q3_2024.csv</strong> — 48,291 rows, 24 columns. Ask me anything about your data.</div>
+          </div>
+          <div class="ai-msg user">
+            <div class="ai-msg-avatar user">U</div>
+            <div class="ai-msg-bubble user">Which columns are most correlated with revenue?</div>
+          </div>
+          <div class="ai-msg">
+            <div class="ai-msg-avatar ai">✦</div>
+            <div class="ai-msg-bubble ai"><strong>Region</strong> (r=0.81), <strong>Customer Segment</strong> (r=0.74), and <strong>Lead Source</strong> (r=0.67) are your strongest predictors. Northern region accounts for 43% of total revenue variance.</div>
+          </div>
+          <div class="ai-msg user">
+            <div class="ai-msg-avatar user">U</div>
+            <div class="ai-msg-bubble user">Any data quality issues?</div>
+          </div>
+          <div class="ai-msg">
+            <div class="ai-msg-avatar ai">✦</div>
+            <div class="ai-msg-bubble ai">3 issues found: <strong>Contact Email</strong> has 18% missing values, <strong>Deal Size</strong> has 14 outliers (&gt;3σ), and <strong>Close Date</strong> has inconsistent formats.</div>
+          </div>
+        </div>
+        <div class="ai-chat-input">
+          <input class="ai-chat-input-field" type="text" placeholder="Ask anything about your dataset..." readonly />
+          <button class="ai-chat-send">✦ Ask</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── METRICS ─── -->
+<section class="metrics-section">
+  <div class="container">
+    <div class="metrics-inner fade-up">
+      <div>
+        <div class="metric-val">10+</div>
+        <div class="metric-label">Pages of analysis tools</div>
+      </div>
+      <div>
+        <div class="metric-val">4</div>
+        <div class="metric-label">ML algorithms built-in</div>
+      </div>
+      <div>
+        <div class="metric-val">0</div>
+        <div class="metric-label">Lines of code to write</div>
+      </div>
+      <div>
+        <div class="metric-val">∞</div>
+        <div class="metric-label">Datasets you can analyse</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── PRICING ─── -->
+<section class="pricing-section" id="pricing">
+  <div class="container">
+    <div class="pricing-header">
+      <div class="section-eyebrow">Pricing</div>
+      <h2 class="section-title">Start free.<br/>Scale when ready.</h2>
+      <p class="section-sub">Built for the realities of African and Global South markets — accessible pricing, no hidden costs.</p>
+    </div>
+    <div class="pricing-grid">
+      <div class="pricing-card fade-up">
+        <div class="pricing-plan">Free</div>
+        <div class="pricing-price"><sup>$</sup>0</div>
+        <div class="pricing-price-sub">Forever free · No card required</div>
+        <div class="pricing-divider"></div>
+        <ul class="pricing-features">
+          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Upload CSV &amp; Excel files</li>
+          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Data Overview &amp; Cleaning</li>
+          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Basic Visualizations</li>
+          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>AI Chat (5 queries/day)</li>
+          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>3-hour session window</li>
+        </ul>
+        <button class="pricing-btn pricing-btn-outline">Get Started Free</button>
+      </div>
+      <div class="pricing-card featured fade-up">
+        <div class="pricing-badge">⚡ Most Popular</div>
+        <div class="pricing-plan">Pro</div>
+        <div class="pricing-price"><sup>$</sup>12<span style="font-size:20px;font-weight:500;letter-spacing:-0.5px">/mo</span></div>
+        <div class="pricing-price-sub">Billed monthly · Cancel anytime</div>
+        <div class="pricing-divider"></div>
+        <ul class="pricing-features">
+          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Everything in Free</li>
+          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Unlimited AI Chat queries</li>
+          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>ML Model Training &amp; Predictions</li>
+          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Python Code Export</li>
+          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>PDF Report Generation</li>
+          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>24-hour session window</li>
+        </ul>
+        <button class="pricing-btn pricing-btn-filled">Join Beta — Get Pro</button>
+      </div>
+      <div class="pricing-card fade-up">
+        <div class="pricing-plan">Team</div>
+        <div class="pricing-price"><sup>$</sup>39<span style="font-size:20px;font-weight:500;letter-spacing:-0.5px">/mo</span></div>
+        <div class="pricing-price-sub">Up to 5 seats · Coming soon</div>
+        <div class="pricing-divider"></div>
+        <ul class="pricing-features">
+          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Everything in Pro</li>
+          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>5 team seats included</li>
+          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Shared project workspace</li>
+          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Priority support</li>
+          <li class="pricing-feature"><div class="pricing-feature-icon">✓</div>Custom integrations</li>
+        </ul>
+        <button class="pricing-btn pricing-btn-outline">Join Waitlist</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── CTA ─── -->
+<section class="cta-section">
+  <div class="container">
+    <div class="cta-inner fade-up">
+      <div class="cta-eyebrow">Ready to take flight?</div>
+      <h2 class="cta-title">Your data has<br/>stories to tell.</h2>
+      <p class="cta-sub">Join analysts and business owners across Africa who are already making faster, smarter decisions with DataPilot.</p>
+      <div class="cta-ctas">
+        <a href="https://creatives-takeover.com/w/datapilot-beta" target="_blank" class="btn-hero">
+          Apply for Beta Access
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+        <a href="#features" class="btn-hero-ghost">Explore Features</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── FOOTER ─── -->
+<footer>
+  <div class="nav-logo">
+    <div class="nav-logo-icon">dp</div>
+    <div class="nav-logo-text">Data<span>Pilot</span></div>
+  </div>
+  <div class="footer-copy">© 2026 DataPilot. Built in Lagos, Nigeria. 🇳🇬</div>
+  <div class="footer-links">
+    <a href="#">Privacy</a>
+    <a href="#">Terms</a>
+    <a href="mailto:hello@datapilot.ai">Contact</a>
+  </div>
+</footer>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach((entry, i) => {
+    if (entry.isIntersecting) {
+      setTimeout(() => entry.target.classList.add('visible'), i * 80);
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+  anchor.addEventListener('click', function(e) {
+    const target = document.querySelector(this.getAttribute('href'));
+    if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  });
+});
+</script>
+</body>
+</html>
