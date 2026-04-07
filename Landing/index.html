@@ -444,6 +444,24 @@ section { position: relative; z-index: 1; }
 .marquee-note { text-align: center; color: var(--text2); margin: 18px 0 28px; font-size: 15px; }
 .pricing-note { text-align: center; color: var(--text2); margin: 20px 0 48px; font-size: 15px; }
  
+/* ─── WHY DATAPILOT ─── */
+.why-section { padding: 100px 0 80px; }
+.why-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.why-col { border-radius: 20px; padding: 36px 32px; }
+.why-col-others { background: rgba(255,255,255,0.02); border: 1px solid var(--border); }
+.why-col-dp { background: linear-gradient(140deg, rgba(108,99,255,0.1), rgba(167,139,250,0.05)); border: 1px solid rgba(108,99,255,0.25); box-shadow: 0 0 60px rgba(108,99,255,0.07); }
+.why-col-header { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; flex-wrap: wrap; }
+.why-col-label { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; color: var(--text); }
+.why-tag-bad { font-family: 'DM Mono', monospace; font-size: 10px; padding: 4px 10px; border-radius: 100px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text3); }
+.why-tag-good { font-family: 'DM Mono', monospace; font-size: 10px; padding: 4px 10px; border-radius: 100px; background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.25); color: var(--accent3); }
+.why-list { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+.why-item { display: flex; gap: 12px; align-items: flex-start; font-size: 13.5px; line-height: 1.6; }
+.why-item.bad { color: var(--text3); }
+.why-item.good { color: var(--text2); }
+.why-icon { flex-shrink: 0; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; margin-top: 1px; }
+.why-item.bad .why-icon { background: rgba(248,113,113,0.1); color: var(--red); }
+.why-item.good .why-icon { background: rgba(52,211,153,0.12); color: var(--accent3); }
+
 /* ─── HOW IT WORKS ─── */
 .how-section { padding: 100px 0; }
 .how-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; margin-top: 64px; position: relative; }
@@ -731,6 +749,11 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
   .mockup-stats-row { grid-template-columns: 1fr 1fr; gap: 8px; }
   .mockup-charts-row { grid-template-columns: 1fr; }
  
+  /* Why section */
+  .why-grid { grid-template-columns: 1fr; }
+  .why-col { padding: 24px 20px; }
+  .why-section { padding: 70px 0 56px; }
+
   /* How */
   .how-steps { grid-template-columns: 1fr; gap: 10px; }
   .how-step { padding: 22px 18px; }
@@ -813,7 +836,7 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
   <div class="hero">
     <div class="hero-eyebrow">
       <div class="hero-eyebrow-dot"></div>
-      Beta Access Now Open · No-Code data Analytics
+      Beta Access Now Open · Built for Independent Analysts
     </div>
     <h1 class="hero-title">
       <span class="line-1">Your Data.</span>
@@ -821,7 +844,7 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
       <span class="line-accent">Zero Code.</span>
     </h1>
     <p class="hero-sub">
-      DataPilot is the data analysis workspace built for analysts, consultants, and businesses across Africa and the Global South — turning raw data into sharp, confident decisions. Run your entire data workflow — without writing code 
+      If you're still spending hours cleaning Excel before the real analysis even starts — DataPilot is built for you. The end-to-end analysis workspace for independent analysts doing client work without a data team. No Python. No SQL. No excuses.
     </p>
     <div class="hero-ctas">
       <a href="https://data-pilot-eta.vercel.app/"  target="_blank" class="btn-hero">
@@ -833,16 +856,7 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
         See how it works
       </a>
     </div>
-    <div class="hero-trust">
-      <div class="hero-trust-avatars">
-        <div class="hero-trust-avatar" style="background:linear-gradient(135deg,#6c63ff,#a78bfa)">N</div>
-        <div class="hero-trust-avatar" style="background:linear-gradient(135deg,#34d399,#059669)">A</div>
-        <div class="hero-trust-avatar" style="background:linear-gradient(135deg,#f59e0b,#d97706)">K</div>
-        <div class="hero-trust-avatar" style="background:linear-gradient(135deg,#f87171,#dc2626)">T</div>
-        <div class="hero-trust-avatar" style="background:linear-gradient(135deg,#22d3ee,#0891b2)">B</div>
-      </div>
-      <span>Trusted by early beta users across Lagos, Nairobi &amp; Accra</span>
-    </div>
+
   </div>
 </section>
 
@@ -969,6 +983,43 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
     </div>
   </div>
 </div>
+
+<!-- ─── WHY DATAPILOT ─── -->
+<section class="why-section">
+  <div class="container">
+    <div class="section-eyebrow">Why DataPilot</div>
+    <h2 class="section-title">Not Excel. Not Power BI.<br/>Something built for <em style="font-style:italic;color:var(--accent2)">your</em> workflow.</h2>
+    <p class="section-sub" style="max-width:560px;margin-bottom:56px">The tools that exist were built for data teams with engineering support. DataPilot is built for the analyst who works alone, delivers to clients, and doesn't have time to write a single line of code.</p>
+    <div class="why-grid">
+      <div class="why-col why-col-others">
+        <div class="why-col-header">
+          <span class="why-col-label">The old way</span>
+          <span class="why-tag-bad">Excel + ChatGPT + Power BI</span>
+        </div>
+        <ul class="why-list">
+          <li class="why-item bad"><span class="why-icon">✕</span>Hours cleaning data manually in Excel before the real work starts</li>
+          <li class="why-item bad"><span class="why-icon">✕</span>Copy-pasting between tools — Excel for cleaning, Power BI for charts, a Python friend for ML</li>
+          <li class="why-item bad"><span class="why-icon">✕</span>No way to run a model without knowing Python or SQL</li>
+          <li class="why-item bad"><span class="why-icon">✕</span>Client reports built manually, slide by slide</li>
+          <li class="why-item bad"><span class="why-icon">✕</span>Expensive SaaS tools priced for Western enterprise teams</li>
+        </ul>
+      </div>
+      <div class="why-col why-col-dp">
+        <div class="why-col-header">
+          <span class="why-col-label">DataPilot</span>
+          <span class="why-tag-good">One workflow. Done.</span>
+        </div>
+        <ul class="why-list">
+          <li class="why-item good"><span class="why-icon">✓</span>Upload your CSV or Excel and start in seconds</li>
+          <li class="why-item good"><span class="why-icon">✓</span>Clean, visualize, model, and predict — all in one place</li>
+          <li class="why-item good"><span class="why-icon">✓</span>Train XGBoost, Random Forest, or Logistic Regression with a click</li>
+          <li class="why-item good"><span class="why-icon">✓</span>Generate a client-ready PDF report directly from your analysis</li>
+          <li class="why-item good"><span class="why-icon">✓</span>Built for African market realities — accessible pricing, no hidden costs</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
 
 <!-- ─── HOW IT WORKS ─── -->
 <section class="how-section" id="how">
@@ -1143,20 +1194,20 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
   <div class="container">
     <div class="metrics-inner fade-up">
       <div>
-        <div class="metric-val">10+</div>
-        <div class="metric-label">Pages of analysis tools</div>
+        <div class="metric-val">3hrs</div>
+        <div class="metric-label">Avg. time saved per analysis session</div>
       </div>
       <div>
-        <div class="metric-val">4</div>
-        <div class="metric-label">ML algorithms built-in</div>
+        <div class="metric-val">1 file</div>
+        <div class="metric-label">Upload to first insight, no setup required</div>
       </div>
       <div>
         <div class="metric-val">0</div>
-        <div class="metric-label">Lines of code to write</div>
+        <div class="metric-label">Lines of code to write — ever</div>
       </div>
       <div>
-        <div class="metric-val">∞</div>
-        <div class="metric-label">Datasets you can analyse</div>
+        <div class="metric-val">100%</div>
+        <div class="metric-label">Client-ready PDF reports, straight from your data</div>
       </div>
     </div>
   </div>
@@ -1218,7 +1269,7 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
     <div class="cta-inner fade-up">
       <div class="cta-eyebrow">Ready to take flight?</div>
       <h2 class="cta-title">Your data has<br/>stories to tell.</h2>
-      <p class="cta-sub">Join analysts and business owners across Africa who are already making faster, smarter decisions with DataPilot.</p>
+      <p class="cta-sub">You're early. That's exactly the point. DataPilot is in active beta and the analysts who join now will help shape what it becomes — including pricing, features, and direction.</p>
       <div class="cta-ctas">
         <a href="https://data-pilot-eta.vercel.app/"  target="_blank" class="btn-hero">
           Join Beta
@@ -1240,11 +1291,11 @@ footer { position: relative; z-index: 1; border-top: 1px solid var(--border); pa
   <div class="footer-links">
     <a href="#">Privacy</a>
     <a href="#">Terms</a>
-    <a href="mailto:hello@datapilot.ai">Contact</a>
+    <a href="/cdn-cgi/l/email-protection#375f525b5b587753564356475e5b584319565e">Contact</a>
   </div>
 </footer>
 
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 const observer = new IntersectionObserver((entries) => {
   entries.forEach((entry, i) => {
     if (entry.isIntersecting) {
@@ -1258,10 +1309,4 @@ document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
 
 document.querySelectorAll('a[href^="#"]').forEach(anchor => {
   anchor.addEventListener('click', function(e) {
-    const target = document.querySelector(this.getAttribute('href'));
-    if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-  });
-});
-</script>
-</body>
-</html>
+    const target = document.querySelector(this.getAttribute('href
