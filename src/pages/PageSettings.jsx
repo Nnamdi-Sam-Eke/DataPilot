@@ -450,11 +450,11 @@ export default function PageSettings() {
             </div>
             {[
               { label: "API key storage", value: "Browser only" },
-              { label: "Data location",   value: "Local storage" },
+              // { label: "Data location",   value: "Local storage" },
               { label: "Version",         value: "0.9.0-beta" },
-              { label: "Stack",           value: "React + FastAPI" },
+              // { label: "Stack",           value: "React + FastAPI" },
               { label: "AI Model", value: "llama-3.3-70b" },
-              { label: "Build date",      value: new Date().toLocaleDateString() },
+              // { label: "Build date",      value: new Date().toLocaleDateString() },
             ].map(({ label, value }) => (
               <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--border)", fontSize: 12 }}>
                 <span style={{ color: "var(--text3)" }}>{label}</span>
