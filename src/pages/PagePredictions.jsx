@@ -2,7 +2,19 @@ import { useState, useRef } from "react";
 import { Icons } from "../shared/icons.jsx";
 import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";
 
-export default function PagePredictions() {
+function NextStepBar({ label, to, setPage, note }) {
+  return (
+    <div style={{ marginTop: 28, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderRadius: 12, background: "var(--bg3)", border: "1px solid var(--border2)" }}>
+      {note && <span style={{ fontSize: 12, color: "var(--text3)" }}>{note}</span>}
+      <button className="btn-primary" style={{ marginLeft: "auto" }} onClick={() => setPage(to)}>
+        {label}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+  );
+}
+
+export default function PagePredictions({ setPage }) {
   const {
     modelId, modelMeta, sessionId,
     predictionResults:  results,   setPredictionResults:  setResults,
@@ -212,6 +224,11 @@ export default function PagePredictions() {
           </div>
         </>
       )}
-    </div>
+      <NextStepBar
+  label="Generate Report"
+  to="/report"
+  setPage={setPage}
+  note="Next: generate a report from your analysis and model results"
+/>    </div>
   );
 }

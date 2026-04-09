@@ -547,7 +547,19 @@ const SECTIONS = [
   { id: "predict",       label: "Predictions",      icon: <Ico d={Icons.predict} /> },
 ];
 
-export default function PageCodeGen() {
+function DoneBar({ setPage }) {
+  return (
+    <div style={{ marginTop: 28, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderRadius: 12, background: "var(--bg3)", border: "1px solid var(--border2)" }}>
+      <span style={{ fontSize: 12, color: "var(--text3)" }}>🎉 You've completed the full analysis pipeline</span>
+      <button className="btn-primary" style={{ marginLeft: "auto" }} onClick={() => setPage("/dashboard")}>
+        Back to Dashboard
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+  );
+}
+
+export default function PageCodeGen({ setPage }) {
   const {
     sessionId, fileName, columns, summary, rowCount,
     trainConfig, trainResults,
@@ -745,6 +757,7 @@ export default function PageCodeGen() {
           </div>
         </div>
       </div>
+      <DoneBar setPage={setPage} />
     </div>
   );
 }

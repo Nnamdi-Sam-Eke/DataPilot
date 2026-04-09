@@ -78,11 +78,24 @@ function PlotCard({ plot, onRemove, onExpand }) {
       {plot.image && (
         <img src={`data:image/png;base64,${plot.image}`} alt={plot.title} onClick={() => onExpand(plot)} style={{ width:"100%", borderRadius:8, cursor:"zoom-in", display:"block" }} />
       )}
+      <NextStepBar label="Train a Model" to="/train" setPage={setPage} note="Next: select a target column and train an ML model" />
     </div>
   );
 }
 
-export default function PageVisualization() {
+function NextStepBar({ label, to, setPage, note }) {
+  return (
+    <div style={{ marginTop: 28, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderRadius: 12, background: "var(--bg3)", border: "1px solid var(--border2)" }}>
+      {note && <span style={{ fontSize: 12, color: "var(--text3)" }}>{note}</span>}
+      <button className="btn-primary" style={{ marginLeft: "auto" }} onClick={() => setPage(to)}>
+        {label}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+  );
+}
+
+export default function PageVisualization({ setPage }) {
   const { sessionId, columns, savedPlots, setSavedPlots, activeSessionExpired } = useDataPilot();
   const [plotType,    setPlotType]    = useState("hist");
   const [xCol,        setXCol]        = useState("");
@@ -369,6 +382,7 @@ export default function PageVisualization() {
           ))}
         </div>
       )}
+      <NextStepBar label="Train a Model" to="/train" setPage={setPage} note="Next: select a target column and train an ML model" />
     </div>
   );
 }

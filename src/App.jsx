@@ -421,19 +421,19 @@ function AppShell() {
             <ReturnNotificationBanner />
             <main className="page-content" key={location.pathname}>
               <Routes>
-                <Route path="/dashboard"    element={<PageDashboard setPage={goTo} />} />
-                <Route path="/upload"       element={<PageUpload    setPage={goTo} />} />
-                <Route path="/overview"     element={<PageOverview />} />
-                <Route path="/insights"     element={<PageInsights />} />
-                <Route path="/visualization"element={<PageVisualization />} />
-                <Route path="/train"        element={<PageTrain />} />
-                <Route path="/report"       element={<PageReport />} />
-                <Route path="/predictions"  element={<PagePredictions />} />
-                <Route path="/cleaning"     element={<PageCleaning />} />
-                <Route path="/codegen"      element={<PageCodeGen />} />
-                <Route path="/settings"     element={<PageSettings />} />
-                <Route path="*"             element={<Navigate to="/dashboard" replace />} />
-              </Routes>
+  <Route path="/dashboard"     element={<PageDashboard setPage={goTo} />} />
+  <Route path="/upload"        element={<PageUpload setPage={goTo} />} />
+  <Route path="/overview"      element={<PageOverview setPage={goTo} />} />
+  <Route path="/cleaning"      element={<PageCleaning setPage={goTo} />} />
+  <Route path="/insights"      element={<PageInsights setPage={goTo} />} />
+  <Route path="/visualization" element={<PageVisualization setPage={goTo} />} />
+  <Route path="/train"         element={<PageTrain setPage={goTo} />} />
+  <Route path="/predictions"   element={<PagePredictions setPage={goTo} />} />
+  <Route path="/report"        element={<PageReport setPage={goTo} />} />
+  <Route path="/codegen"       element={<PageCodeGen setPage={goTo} />} />
+  <Route path="/settings"      element={<PageSettings />} />
+  <Route path="*"              element={<Navigate to="/dashboard" replace />} />
+</Routes>
             </main>
           </div>
         </div>

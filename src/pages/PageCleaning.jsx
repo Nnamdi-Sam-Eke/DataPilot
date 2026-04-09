@@ -92,7 +92,19 @@ return (
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────
-export default function PageCleaning() {
+function NextStepBar({ label, to, setPage, note }) {
+  return (
+    <div style={{ marginTop: 28, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderRadius: 12, background: "var(--bg3)", border: "1px solid var(--border2)" }}>
+      {note && <span style={{ fontSize: 12, color: "var(--text3)" }}>{note}</span>}
+      <button className="btn-primary" style={{ marginLeft: "auto" }} onClick={() => setPage(to)}>
+        {label}
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+  );
+}
+
+export default function PageCleaning({ setPage }) {
   const {
     sessionId, columns, summary, fileName, rowCount,
     setColumns, setSummary, setRowCount,
@@ -695,6 +707,7 @@ const categoricalCols = safeColumns.filter((c) => {
 
         </div>
       </div>
+      <NextStepBar label="Ask DataPilot" to="/insights" setPage={setPage} note="Next: ask natural language questions about your cleaned data" />
     </div>
   );
 }
