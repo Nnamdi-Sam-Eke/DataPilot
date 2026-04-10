@@ -631,11 +631,11 @@ export default function PageReport({ setPage }) {
                 </div>
               )}
 
-              {/* No Groq key nudge */}
-              {!aiNarrative && !groqKey && (
+              {/* Generating hint — shown before first report is generated */}
+              {!aiNarrative && !report && (
                 <div style={{ marginBottom: 14, padding: "10px 14px", background: "rgba(108,99,255,0.06)", border: "1px dashed rgba(108,99,255,0.3)", borderRadius: 8, fontSize: 11, color: "var(--text3)", display: "flex", alignItems: "center", gap: 8 }}>
                   <span>✦</span>
-                  <span>Add a Groq API key in <strong style={{ color: "var(--accent2)" }}>Settings</strong> to unlock AI-generated analyst narratives.</span>
+                  <span>An AI-generated analyst narrative will be included automatically when you generate the report.</span>
                 </div>
               )}
 

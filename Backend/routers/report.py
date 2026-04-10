@@ -3,10 +3,23 @@ from typing import Dict, Any, List, Optional
 import pandas as pd
 import numpy as np
 import logging
+import os
+from pathlib import Path
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load server .env (same pattern as insights.py)
+_ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=_ENV_PATH)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _get_server_groq_key() -> str:
+    """Return the server-side GROQ_API_KEY from env, stripped of whitespace."""
+    val = os.getenv("GROQ_API_KEY", "")
+    return val.strip() if val else ""
 
 
 def sanitize(obj):
@@ -131,7 +144,9 @@ async def generate_report(payload: Dict):
     ])
     model_id   = payload.get("model_id")
     file_name  = payload.get("file_name", "dataset.csv")
-    groq_key   = payload.get("groq_key", "")
+
+    # Prefer user BYOK key; fall back to server env key (same as insights.py)
+    groq_key = (payload.get("groq_key") or "").strip() or _get_server_groq_key()
 
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id is required.")
