@@ -29,23 +29,109 @@ def sanitize(obj):
     return obj
 
 
+async def generate_ai_narrative(
+    groq_key: str,
+    file_name: str,
+    n_rows: int,
+    n_cols: int,
+    numeric_cols: list,
+    categorical_cols: list,
+    missing_pct: float,
+    duplicates: int,
+    top_corrs: list,
+    recommendations: list,
+    model_type: str = None,
+    task: str = None,
+    metrics: dict = None,
+) -> str:
+    """
+    Call Groq to generate a professional analyst narrative for the report header.
+    Returns an empty string gracefully if the call fails or no key is provided.
+    """
+    if not groq_key:
+        return ""
+
+    try:
+        from groq import Groq
+        client = Groq(api_key=groq_key)
+
+        # Build a compact context string for the prompt
+        corr_summary = ""
+        if top_corrs:
+            top = top_corrs[0]
+            corr_summary = (
+                f"The strongest correlation is between '{top['col_a']}' and '{top['col_b']}' "
+                f"(r = {top['correlation']})."
+            )
+
+        model_summary = ""
+        if model_type and task and metrics:
+            primary_metric = ""
+            if task == "classification" and "accuracy" in metrics:
+                primary_metric = f"accuracy of {metrics['accuracy']*100:.1f}%"
+            elif task == "regression" and "r2" in metrics:
+                primary_metric = f"R² of {metrics['r2']:.3f}"
+            if primary_metric:
+                model_summary = (
+                    f"A {model_type.upper()} model was trained for {task}, achieving a {primary_metric}."
+                )
+
+        rec_text = " ".join(recommendations[:3]) if recommendations else ""
+
+        prompt = f"""You are a senior data analyst writing the opening narrative for a professional data analysis report.
+
+Dataset: {file_name}
+Shape: {n_rows:,} rows × {n_cols} columns ({len(numeric_cols)} numeric, {len(categorical_cols)} categorical)
+Data quality: {missing_pct}% missing values, {duplicates} duplicate rows
+{corr_summary}
+{model_summary}
+Key findings: {rec_text}
+
+Write a concise, professional 3-4 sentence analyst summary for the report introduction. 
+- Use confident, precise language appropriate for a business or technical audience.
+- Highlight the most important findings and what they imply.
+- Do NOT use bullet points, headers, or markdown — plain prose only.
+- Do NOT start with "This report" or "The dataset". Be direct and insightful.
+- Maximum 120 words."""
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=200,
+            temperature=0.5,
+        )
+
+        narrative = response.choices[0].message.content.strip()
+        logger.info("✅ AI narrative generated successfully")
+        return narrative
+
+    except Exception as e:
+        logger.warning(f"AI narrative generation skipped: {e}")
+        return ""
+
+
 @router.post("/")
 async def generate_report(payload: Dict):
     """
     Generate a structured analysis report from a session.
     payload = {
         "session_id": str,
-        "sections": ["executive_summary", "data_quality", "statistics", "correlations", ...],
+        "sections": [...],
         "model_id": str (optional),
-        "file_name": str (optional)
+        "file_name": str (optional),
+        "groq_key": str (optional) — if provided, generates an AI narrative
     }
     """
     from routers.upload import get_session
 
     session_id = payload.get("session_id")
-    sections = payload.get("sections", ["executive_summary", "data_quality", "statistics", "correlations", "recommendations"])
-    model_id = payload.get("model_id")
-    file_name = payload.get("file_name", "dataset.csv")
+    sections   = payload.get("sections", [
+        "executive_summary", "data_quality", "statistics",
+        "correlations", "recommendations"
+    ])
+    model_id   = payload.get("model_id")
+    file_name  = payload.get("file_name", "dataset.csv")
+    groq_key   = payload.get("groq_key", "")
 
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id is required.")
@@ -57,18 +143,19 @@ async def generate_report(payload: Dict):
     report: Dict[str, Any] = {
         "generated_at": datetime.utcnow().isoformat(),
         "file_name": file_name,
-        "sections": {}
+        "sections": {},
+        "ai_narrative": "",
     }
 
     try:
-        n_rows, n_cols = df.shape
-        numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
-        categorical_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
-        total_missing = int(df.isnull().sum().sum())
-        missing_pct = round(total_missing / (n_rows * n_cols) * 100, 2) if n_rows * n_cols > 0 else 0
-        duplicates = int(df.duplicated().sum())
+        n_rows, n_cols       = df.shape
+        numeric_cols         = df.select_dtypes(include=["number"]).columns.tolist()
+        categorical_cols     = df.select_dtypes(include=["object", "category"]).columns.tolist()
+        total_missing        = int(df.isnull().sum().sum())
+        missing_pct          = round(total_missing / (n_rows * n_cols) * 100, 2) if n_rows * n_cols > 0 else 0
+        duplicates           = int(df.duplicated().sum())
 
-        # Executive Summary
+        # ── Executive Summary ─────────────────────────────────────────────
         if "executive_summary" in sections:
             report["sections"]["executive_summary"] = {
                 "rows": n_rows,
@@ -82,58 +169,59 @@ async def generate_report(payload: Dict):
                     f"({len(numeric_cols)} numeric, {len(categorical_cols)} categorical). "
                     f"Missing values account for {missing_pct}% of all cells. "
                     f"{duplicates} duplicate rows were detected."
-                )
+                ),
             }
 
-        # Data Quality
+        # ── Data Quality ──────────────────────────────────────────────────
         if "data_quality" in sections:
             missing_by_col = df.isnull().sum()
-            quality_cols = []
+            quality_cols   = []
             for col in df.columns:
                 miss = int(missing_by_col[col])
                 quality_cols.append({
-                    "column": col,
+                    "column":        col,
                     "missing_count": miss,
-                    "missing_pct": round(miss / n_rows * 100, 2) if n_rows > 0 else 0,
-                    "dtype": str(df[col].dtype),
+                    "missing_pct":   round(miss / n_rows * 100, 2) if n_rows > 0 else 0,
+                    "dtype":         str(df[col].dtype),
                     "unique_values": int(df[col].nunique()),
                 })
             report["sections"]["data_quality"] = {
                 "total_missing": total_missing,
-                "missing_pct": missing_pct,
+                "missing_pct":   missing_pct,
                 "duplicate_rows": duplicates,
-                "columns": quality_cols,
+                "columns":        quality_cols,
             }
 
-        # Statistics
+        # ── Statistics ────────────────────────────────────────────────────
         if "statistics" in sections and numeric_cols:
             stats = {}
-            desc = df[numeric_cols].describe()
+            desc  = df[numeric_cols].describe()
             for col in numeric_cols:
                 col_stats = desc[col].to_dict()
-                col_stats = {k: (None if (isinstance(v, float) and (np.isnan(v) or np.isinf(v))) else v)
-                             for k, v in col_stats.items()}
+                col_stats = {
+                    k: (None if (isinstance(v, float) and (np.isnan(v) or np.isinf(v))) else v)
+                    for k, v in col_stats.items()
+                }
                 stats[col] = col_stats
             report["sections"]["statistics"] = stats
 
-        # ==================== REAL CORRELATION MATRIX ====================
+        # ── Correlations ──────────────────────────────────────────────────
+        top_corrs = []
+        corr      = None
         if "correlations" in sections and len(numeric_cols) >= 2:
             corr = df[numeric_cols].corr()
-            
-            # Top correlations (excluding diagonal)
-            top_corrs = []
+
             for i in range(len(numeric_cols)):
                 for j in range(i + 1, len(numeric_cols)):
                     val = corr.iloc[i, j]
                     if not np.isnan(val):
                         top_corrs.append({
-                            "col_a": numeric_cols[i],
-                            "col_b": numeric_cols[j],
+                            "col_a":       numeric_cols[i],
+                            "col_b":       numeric_cols[j],
                             "correlation": round(float(val), 4),
                         })
             top_corrs.sort(key=lambda x: abs(x["correlation"]), reverse=True)
 
-            # Full correlation matrix - JSON safe
             corr_matrix = {}
             for i, col in enumerate(numeric_cols):
                 corr_matrix[col] = {}
@@ -143,19 +231,19 @@ async def generate_report(payload: Dict):
 
             report["sections"]["correlations"] = {
                 "top_correlations": top_corrs[:15],
-                "matrix": corr_matrix,
-                "numeric_columns": numeric_cols
+                "matrix":           corr_matrix,
+                "numeric_columns":  numeric_cols,
             }
 
-        # Feature Importance
+        # ── Feature Importance ────────────────────────────────────────────
         if "feature_importance" in sections and model_id:
             try:
                 from routers.train import MODEL_STORE
                 if model_id in MODEL_STORE:
-                    store = MODEL_STORE[model_id]
-                    model = store["model"]
+                    store        = MODEL_STORE[model_id]
+                    model        = store["model"]
                     feature_cols = store["feature_columns"]
-                    fi_data = []
+                    fi_data      = []
                     if hasattr(model, "feature_importances_"):
                         fi = model.feature_importances_
                         fi_data = sorted(
@@ -167,41 +255,78 @@ async def generate_report(payload: Dict):
             except Exception as e:
                 logger.warning(f"Could not get feature importance: {e}")
 
-        # Model Performance
+        # ── Model Performance (full metrics) ──────────────────────────────
+        model_type_str = None
+        task_str       = None
+        metrics_dict   = {}
         if "model_performance" in sections and model_id:
             try:
                 from routers.train import MODEL_STORE
                 if model_id in MODEL_STORE:
-                    store = MODEL_STORE[model_id]
+                    store          = MODEL_STORE[model_id]
+                    model_type_str = store.get("model_type", "")
+                    task_str       = "classification" if store.get("is_classification") else "regression"
+                    metrics_dict   = store.get("metrics", {})
                     report["sections"]["model_performance"] = {
-                        "model_type": store["model_type"],
-                        "task": "classification" if store["is_classification"] else "regression",
+                        "model_type": model_type_str,
+                        "task":       task_str,
+                        "metrics":    metrics_dict,
+                        "train_size": store.get("train_size"),
+                        "test_size":  store.get("test_size"),
                     }
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Could not get model performance: {e}")
 
-        # Recommendations
+        # ── Recommendations ───────────────────────────────────────────────
+        recs = []
         if "recommendations" in sections:
-            recs = []
             if missing_pct > 5:
-                recs.append(f"Address missing values ({missing_pct}% of data). Consider median/mode imputation or row removal.")
+                recs.append(
+                    f"Address missing values ({missing_pct}% of data). "
+                    f"Consider median/mode imputation or row removal."
+                )
             if duplicates > 0:
                 recs.append(f"Remove {duplicates} duplicate rows before modeling.")
             if len(categorical_cols) > 0:
-                recs.append(f"Encode {len(categorical_cols)} categorical column(s) before training.")
-            if len(numeric_cols) >= 2:
+                recs.append(
+                    f"Encode {len(categorical_cols)} categorical column(s) before training."
+                )
+            if len(numeric_cols) >= 2 and corr is not None:
                 try:
-                    high_corr = [(numeric_cols[i], numeric_cols[j], corr.iloc[i, j])
-                                 for i in range(len(numeric_cols))
-                                 for j in range(i+1, len(numeric_cols))
-                                 if abs(corr.iloc[i, j]) > 0.9 and not np.isnan(corr.iloc[i, j])]
+                    high_corr = [
+                        (numeric_cols[i], numeric_cols[j], corr.iloc[i, j])
+                        for i in range(len(numeric_cols))
+                        for j in range(i + 1, len(numeric_cols))
+                        if abs(corr.iloc[i, j]) > 0.9 and not np.isnan(corr.iloc[i, j])
+                    ]
                     if high_corr:
-                        recs.append(f"Found {len(high_corr)} highly correlated column pair(s) — consider removing redundant features.")
+                        recs.append(
+                            f"Found {len(high_corr)} highly correlated column pair(s) — "
+                            f"consider removing redundant features."
+                        )
                 except Exception:
                     pass
             if not recs:
                 recs.append("Dataset looks clean. Ready for modeling.")
             report["sections"]["recommendations"] = recs
+
+        # ── AI Narrative (Groq) ───────────────────────────────────────────
+        if groq_key:
+            report["ai_narrative"] = await generate_ai_narrative(
+                groq_key      = groq_key,
+                file_name     = file_name,
+                n_rows        = n_rows,
+                n_cols        = n_cols,
+                numeric_cols  = numeric_cols,
+                categorical_cols = categorical_cols,
+                missing_pct   = missing_pct,
+                duplicates    = duplicates,
+                top_corrs     = top_corrs,
+                recommendations = recs,
+                model_type    = model_type_str,
+                task          = task_str,
+                metrics       = metrics_dict,
+            )
 
         logger.info(f"✅ Report generated for session {session_id}")
         return sanitize(report)
