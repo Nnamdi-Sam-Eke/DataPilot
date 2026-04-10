@@ -78,7 +78,6 @@ function PlotCard({ plot, onRemove, onExpand }) {
       {plot.image && (
         <img src={`data:image/png;base64,${plot.image}`} alt={plot.title} onClick={() => onExpand(plot)} style={{ width:"100%", borderRadius:8, cursor:"zoom-in", display:"block" }} />
       )}
-      <NextStepBar label="Train a Model" to="/train" setPage={setPage} note="Next: select a target column and train an ML model" />
     </div>
   );
 }
