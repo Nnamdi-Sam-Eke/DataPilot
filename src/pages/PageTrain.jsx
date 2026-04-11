@@ -119,12 +119,22 @@ export default function PageTrain({ setPage }) {
                     <div key={key} className="stat-block" style={{ textAlign:"center" }}>
                       <div className="stat-label">{key.toUpperCase()}</div>
                       <div style={{ fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:700,color:"var(--green)" }}>
-                        {typeof val==="number"?(val<1&&val>-1?(key==="r2"?val.toFixed(3):(val*100).toFixed(1)+"%"):val.toFixed(2)):val}
+                        {typeof val==="number"?(["rmse","mae","mse"].includes(key)?val.toFixed(3):key==="r2"?val.toFixed(3):val<1&&val>-1?(val*100).toFixed(1)+"%":val.toFixed(3)):val}
                       </div>
                     </div>
                   ))}
                 </div>
                 <div style={{ marginTop:12,fontSize:11,color:"var(--text3)",fontFamily:"'DM Mono',monospace" }}>Trained on {trainResults.train_size?.toLocaleString()} rows · Tested on {trainResults.test_size?.toLocaleString()} rows</div>
+                <a
+                  href={`${API_BASE}/train/download/${trainResults.model_id}`}
+                  download
+                  style={{ marginTop:12,display:"flex",alignItems:"center",justifyContent:"center",gap:7,padding:"8px 14px",borderRadius:8,background:"var(--bg3)",border:"1px solid var(--border2)",color:"var(--text2)",fontSize:12,fontWeight:500,textDecoration:"none",transition:"all 0.15s",cursor:"pointer" }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor="rgba(108,99,255,0.4)"; e.currentTarget.style.color="var(--accent2)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor="var(--border2)"; e.currentTarget.style.color="var(--text2)"; }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Download Model (.pkl)
+                </a>
               </div>
               {trainResults.feature_importance?.length>0 && (
                 <div className="card fade-up fade-up-1">

@@ -143,7 +143,7 @@ function buildHTMLReport(report, fileName, savedPlots = [], aiNarrative = "") {
         <div class="stat-card"><div class="value">${modelPerf.task || "—"}</div><div class="label">Task Type</div></div>
         ${Object.entries(modelPerf.metrics || {}).map(([k, v]) => `
           <div class="stat-card">
-            <div class="value" style="color:#38a169">${typeof v === "number" ? (v < 1 && v > -1 ? (v * 100).toFixed(1) + "%" : v.toFixed(3)) : v}</div>
+            <div class="value" style="color:#38a169">${typeof v === "number" ? (["rmse","mae","mse"].includes(k) ? v.toFixed(3) : k === "r2" ? v.toFixed(3) : v < 1 && v > -1 ? (v * 100).toFixed(1) + "%" : v.toFixed(3)) : v}</div>
             <div class="label">${k.toUpperCase()}</div>
           </div>`).join("")}
       </div>
@@ -749,7 +749,7 @@ export default function PageReport({ setPage }) {
                         <div key={k} style={{ background: "rgba(52,211,153,0.06)", border: "1px solid rgba(52,211,153,0.2)", borderRadius: 7, padding: "8px 6px", textAlign: "center" }}>
                           <div style={{ fontSize: 9, color: "#888", textTransform: "uppercase", letterSpacing: "0.06em" }}>{k}</div>
                           <div style={{ fontSize: 13, fontWeight: 800, color: "var(--green)", marginTop: 2 }}>
-                            {typeof v === "number" ? (v < 1 && v > -1 ? (v * 100).toFixed(1) + "%" : v.toFixed(3)) : v}
+                            {typeof v === "number" ? (["rmse","mae","mse"].includes(k) ? v.toFixed(3) : k === "r2" ? v.toFixed(3) : v < 1 && v > -1 ? (v * 100).toFixed(1) + "%" : v.toFixed(3)) : v}
                           </div>
                         </div>
                       ))}

@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional
 import pandas as pd
 import numpy as np
 import uuid
+import io
 import logging
 from datetime import datetime
 
@@ -181,7 +183,7 @@ async def train_model(payload: Dict):
                 key=lambda x: x["importance"], reverse=True
             )[:15]
 
-        # Store model for predictions
+        # Store model for predictions and export
         model_id = str(uuid.uuid4())
         MODEL_STORE[model_id] = {
             "model": model,
@@ -191,6 +193,9 @@ async def train_model(payload: Dict):
             "is_classification": is_classification,
             "label_encoder": le_y,
             "model_type": model_type,
+            "metrics": metrics,
+            "train_size": len(X_train),
+            "test_size": len(X_test),
             "created_at": datetime.utcnow(),
         }
 
@@ -213,3 +218,54 @@ async def train_model(payload: Dict):
     except Exception as e:
         logger.error(f"Training failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")
+
+@router.get("/download/{model_id}")
+async def download_model(model_id: str):
+    """
+    Serialize and stream a trained model as a .pkl bundle.
+    The bundle includes the model, scaler, feature columns, label encoder,
+    and metadata — everything needed to run predictions outside DataPilot.
+    """
+    if model_id not in MODEL_STORE:
+        raise HTTPException(status_code=404, detail="Model not found or server was restarted.")
+
+    try:
+        import joblib
+
+        store = MODEL_STORE[model_id]
+
+        # Bundle everything the user needs to reproduce predictions externally
+        bundle = {
+            "model":           store["model"],
+            "scaler":          store["scaler"],
+            "feature_columns": store["feature_columns"],
+            "target_column":   store["target_column"],
+            "is_classification": store["is_classification"],
+            "label_encoder":   store["label_encoder"],
+            "model_type":      store["model_type"],
+            "metrics":         store.get("metrics", {}),
+            "train_size":      store.get("train_size"),
+            "test_size":       store.get("test_size"),
+            "trained_at":      store["created_at"].isoformat(),
+            "datapilot_version": "1.0",
+        }
+
+        buf = io.BytesIO()
+        joblib.dump(bundle, buf)
+        buf.seek(0)
+
+        model_type = store["model_type"]
+        target     = store["target_column"].replace(" ", "_")
+        filename   = f"datapilot_{model_type}_{target}.pkl"
+
+        logger.info(f"✅ Model download: {model_id} → {filename}")
+
+        return StreamingResponse(
+            buf,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    except Exception as e:
+        logger.error(f"Model download failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Model download failed: {str(e)}")

@@ -6,6 +6,7 @@ python-multipart
 matplotlib
 seaborn
 scikit-learn
+xgboost
 groq
 python-dotenv
 chardet
