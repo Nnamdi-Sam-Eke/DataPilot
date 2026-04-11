@@ -21,7 +21,7 @@ import { doc, getDoc, setDoc }  from "firebase/firestore";
 import { db }                   from "./services/firebase";
 import { saveUserProfile }      from "./services/firestore";
 import { styles }               from "./styles.jsx";
-import { DataPilotProvider, useDataPilot } from "./DataPilotContext.jsx";
+import { DataPilotProvider, useDataPilot, API_BASE } from "./DataPilotContext.jsx";
 import Sidebar      from "./components/Sidebar.jsx";
 import Topbar       from "./components/Topbar.jsx";
 import PageAuth     from "./pages/PageAuth.jsx";
@@ -256,6 +256,14 @@ function AppShell() {
     const savedAccent = localStorage.getItem("accentColor") || "#6c63ff";
     document.documentElement.setAttribute("data-theme", savedTheme);
     document.documentElement.setAttribute("data-accent", savedAccent);
+  }, []);
+
+  // ── Backend keep-alive (Render free tier anti-sleep) ───────────────────
+  useEffect(() => {
+    const ping = () => fetch(`${API_BASE}/health`).catch(() => {});
+    ping();
+    const interval = setInterval(ping, 9 * 60 * 1000); // every 9 min
+    return () => clearInterval(interval);
   }, []);
 
   // ── Load betaProfile + onboarding flags; retry-aware ─────────────────────
