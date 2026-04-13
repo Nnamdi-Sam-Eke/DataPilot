@@ -21,6 +21,40 @@ const DataPilotContext = createContext(null);
 
 const LS_KEY = "datapilot_state";
 
+// ── Workspace schema ──────────────────────────────────────────────────────────
+// All per-dataset analysis state lives in a "workspace" object that is stored
+// inside each session slot.  Switching sessions saves the outgoing workspace
+// and restores the incoming one — so nothing is ever lost.
+
+const EMPTY_WORKSPACE = {
+  modelId:             null,
+  modelMeta:           null,
+  trainResults:        null,
+  trainedModels:       [],   // all trained models for this session [{model_id, model_type, task, metrics, ...}]
+  trainConfig:         { selectedModel: "rf", targetCol: "", testSize: 0.2 },
+  savedPlots:          [],
+  predictionResults:   null,
+  predictionFileName:  "",
+  savedReport:         null,
+  reportFormat:        "HTML",
+  reportChecked:       null,
+  chatMessages:        null,
+  cleanPreview:        null,
+  cleanOpLog:          [],
+  cleanFillStrategies: {},
+  cleanRenameMap:      {},
+  cleanCastMap:        {},
+  cleanEncodeMap:      {},
+  cleanPromoted:       false,
+};
+
+const freshWorkspace = () => ({
+  ...EMPTY_WORKSPACE,
+  trainConfig: { selectedModel: "rf", targetCol: "", testSize: 0.2 },
+});
+
+// ── LocalStorage ──────────────────────────────────────────────────────────────
+
 function loadState() {
   try {
     const raw = localStorage.getItem(LS_KEY);
@@ -42,6 +76,8 @@ function clearState() {
   } catch {}
 }
 
+// ── Provider ──────────────────────────────────────────────────────────────────
+
 export function DataPilotProvider({ children }) {
   const p = loadState();
 
@@ -50,24 +86,20 @@ export function DataPilotProvider({ children }) {
     const saved = localStorage.getItem("theme");
     return saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   });
-
   const [accentColor, setAccentColor] = useState(
     () => localStorage.getItem("accentColor") || "#6c63ff"
   );
-
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     document.documentElement.setAttribute("data-accent", accentColor);
     localStorage.setItem("theme", theme);
     localStorage.setItem("accentColor", accentColor);
   }, [theme, accentColor]);
-
   const toggleTheme = () => setTheme((prev) => (prev === "dark" ? "light" : "dark"));
 
   // ── Auth ──────────────────────────────────────────────────────────────
   const [user,        setUser]        = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-
   const [userProfile, setUserProfileRaw] = useState(
     p?.userProfile || { displayName: "", email: "", plan: "Pro" }
   );
@@ -75,43 +107,62 @@ export function DataPilotProvider({ children }) {
   // ── Projects ──────────────────────────────────────────────────────────
   const [projects, setProjectsRaw] = useState(p?.projects || []);
 
-  // ── Session ───────────────────────────────────────────────────────────
-  const [sessionId,  setSessionIdRaw]  = useState(p?.sessionId  || null);
-  const [columns,    setColumnsRaw]    = useState(p?.columns    || []);
-  const [summary,    setSummaryRaw]    = useState(p?.summary    || null);
-  const [fileName,   setFileNameRaw]   = useState(p?.fileName   || "");
-  const [rowCount,   setRowCountRaw]   = useState(p?.rowCount   || 0);
-  const [totalRowsProcessed, setTotalRowsProcessedRaw] = useState(p?.totalRowsProcessed || 0);
-  const [sessions,   setSessionsRaw]   = useState(p?.sessions   || []);
-  const [activeIdx,  setActiveIdxRaw]  = useState(p?.activeIdx  ?? null);
+  // ── Sessions list + active pointer ────────────────────────────────────
+  const [sessions,  setSessionsRaw]  = useState(p?.sessions  || []);
+  const [activeIdx, setActiveIdxRaw] = useState(p?.activeIdx ?? null);
 
-  // ── Other state ───────────────────────────────────────────────────────
-  const [cleanPreview,    setCleanPreviewRaw]    = useState(p?.cleanPreview    || null);
-  const [previewLoading,  setPreviewLoadingRaw]  = useState(false);
-  // ── Offline / Network state ─────────────────────────────────────────────
-  const [isOffline, setIsOffline] = useState(() => !navigator.onLine);
+  // ── Active session identity ───────────────────────────────────────────
+  const [sessionId, setSessionIdRaw] = useState(p?.sessionId || null);
+  const [columns,   setColumnsRaw]   = useState(p?.columns   || []);
+  const [summary,   setSummaryRaw]   = useState(p?.summary   || null);
+  const [fileName,  setFileNameRaw]  = useState(p?.fileName  || "");
+  const [rowCount,  setRowCountRaw]  = useState(p?.rowCount  || 0);
+  const [totalRowsProcessed, setTotalRowsProcessedRaw] = useState(p?.totalRowsProcessed || 0);
+
+  // ── Active workspace state ────────────────────────────────────────────
+  // Restored from the persisted activeWorkspace on initial load.
+  const savedWs = p?.activeWorkspace || {};
+  const [modelId,             setModelIdRaw]             = useState(savedWs.modelId             ?? null);
+  const [modelMeta,           setModelMetaRaw]           = useState(savedWs.modelMeta           ?? null);
+  const [trainResults,        setTrainResultsRaw]        = useState(savedWs.trainResults        ?? null);
+  const [trainedModels,       setTrainedModelsRaw]       = useState(savedWs.trainedModels       ?? []);
+  const [trainConfig,         setTrainConfigRaw]         = useState(savedWs.trainConfig         ?? { selectedModel: "rf", targetCol: "", testSize: 0.2 });
+  const [savedPlots,          setSavedPlotsRaw]          = useState(savedWs.savedPlots          ?? []);
+  const [predictionResults,   setPredictionResultsRaw]   = useState(savedWs.predictionResults   ?? null);
+  const [predictionFileName,  setPredictionFileNameRaw]  = useState(savedWs.predictionFileName  ?? "");
+  const [savedReport,         setSavedReportRaw]         = useState(savedWs.savedReport         ?? null);
+  const [reportFormat,        setReportFormatRaw]        = useState(savedWs.reportFormat        ?? "HTML");
+  const [reportChecked,       setReportCheckedRaw]       = useState(savedWs.reportChecked       ?? null);
+  const [chatMessages,        setChatMessagesRaw]        = useState(savedWs.chatMessages        ?? null);
+  const [cleanPreview,        setCleanPreviewRaw]        = useState(savedWs.cleanPreview        ?? null);
+  const [cleanOpLog,          setCleanOpLogRaw]          = useState(savedWs.cleanOpLog          ?? []);
+  const [cleanFillStrategies, setCleanFillStrategiesRaw] = useState(savedWs.cleanFillStrategies ?? {});
+  const [cleanRenameMap,      setCleanRenameMapRaw]      = useState(savedWs.cleanRenameMap      ?? {});
+  const [cleanCastMap,        setCleanCastMapRaw]        = useState(savedWs.cleanCastMap        ?? {});
+  const [cleanEncodeMap,      setCleanEncodeMapRaw]      = useState(savedWs.cleanEncodeMap      ?? {});
+  const [cleanPromoted,       setCleanPromotedRaw]       = useState(savedWs.cleanPromoted       ?? false);
+
+  // ── Transient UI ──────────────────────────────────────────────────────
+  const [previewLoading, setPreviewLoadingRaw] = useState(false);
+  const [groqKey,        setGroqKeyRaw]        = useState(p?.groqKey || "");
+
+  // ── Offline / Network ─────────────────────────────────────────────────
+  const [isOffline,          setIsOffline]          = useState(() => !navigator.onLine);
   const [retryingConnection, setRetryingConnection] = useState(false);
   const [connectionRetryKey, setConnectionRetryKey] = useState(0);
 
   useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
-
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
+    const on  = () => setIsOffline(false);
+    const off = () => setIsOffline(true);
+    window.addEventListener("online",  on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
   }, []);
 
   const retryConnection = useCallback(async () => {
     try {
       setRetryingConnection(true);
       await enableNetwork(db);
-
-      // bump the retry key and let the next Firestore call confirm connectivity
       setConnectionRetryKey((prev) => prev + 1);
     } catch (error) {
       console.error("Retry failed:", error);
@@ -121,14 +172,9 @@ export function DataPilotProvider({ children }) {
     }
   }, []);
 
-  // Auto-retry while offline
   useEffect(() => {
     if (!isOffline) return;
-
-    const iv = setInterval(() => {
-      retryConnection();
-    }, 5000);
-
+    const iv = setInterval(() => retryConnection(), 5000);
     return () => clearInterval(iv);
   }, [isOffline, retryConnection]);
 
@@ -138,70 +184,46 @@ export function DataPilotProvider({ children }) {
         error?.code === "unavailable" ||
         error?.code === "failed-precondition" ||
         (error?.message && String(error.message).toLowerCase().includes("offline"))
-      ) {
-        setIsOffline(true);
-      }
+      ) setIsOffline(true);
     } catch {}
   }, []);
-  const [modelId,         setModelIdRaw]         = useState(p?.modelId         || null);
-  const [modelMeta,       setModelMetaRaw]       = useState(p?.modelMeta       || null);
-  const [trainResults,    setTrainResultsRaw]    = useState(p?.trainResults    || null);
-  const [trainConfig,     setTrainConfigRaw]     = useState(p?.trainConfig     || { selectedModel: "rf", targetCol: "", testSize: 0.2 });
-  const [savedPlots,      setSavedPlotsRaw]      = useState(p?.savedPlots      || []);
-  const [predictionResults,   setPredictionResultsRaw]   = useState(p?.predictionResults   || null);
-  const [predictionFileName,  setPredictionFileNameRaw]  = useState(p?.predictionFileName  || "");
-  const [savedReport,     setSavedReportRaw]     = useState(p?.savedReport     || null);
-  const [reportFormat,    setReportFormatRaw]    = useState(p?.reportFormat    || "HTML");
-  const [reportChecked,   setReportCheckedRaw]   = useState(p?.reportChecked   || null);
-  const [chatMessages,    setChatMessagesRaw]    = useState(p?.chatMessages    || null);
-  const [cleanOpLog,          setCleanOpLogRaw]          = useState(p?.cleanOpLog          || []);
-  const [cleanFillStrategies, setCleanFillStrategiesRaw] = useState(p?.cleanFillStrategies || {});
-  const [cleanRenameMap,      setCleanRenameMapRaw]      = useState(p?.cleanRenameMap      || {});
-  const [cleanCastMap,        setCleanCastMapRaw]        = useState(p?.cleanCastMap        || {});
-  const [cleanEncodeMap,      setCleanEncodeMapRaw]      = useState(p?.cleanEncodeMap      || {});
-  const [cleanPromoted,       setCleanPromotedRaw]       = useState(p?.cleanPromoted       || false);
-  const [groqKey,         setGroqKeyRaw]         = useState(p?.groqKey         || "");
 
-  // ── Persistence ───────────────────────────────────────────────────────
-  useEffect(() => {
-    saveState({
-      sessionId, columns, summary, fileName, rowCount,
-      totalRowsProcessed,
-      modelId, modelMeta, sessions, activeIdx,
-      trainResults, trainConfig, savedPlots,
-      savedReport, reportFormat, reportChecked,
-      chatMessages, predictionResults, predictionFileName,
-      cleanOpLog, cleanFillStrategies, cleanRenameMap,
-      cleanCastMap, cleanEncodeMap, cleanPromoted,
-      userProfile, projects,
+  // ── applyWorkspace ────────────────────────────────────────────────────
+  // Writes a workspace object into all live state setters atomically.
+  const applyWorkspace = useCallback((ws) => {
+    const w = { ...EMPTY_WORKSPACE, ...ws };
+    setModelIdRaw(w.modelId);
+    setModelMetaRaw(w.modelMeta);
+    setTrainResultsRaw(w.trainResults);
+    setTrainedModelsRaw(w.trainedModels);
+    setTrainConfigRaw(w.trainConfig);
+    setSavedPlotsRaw(w.savedPlots);
+    setPredictionResultsRaw(w.predictionResults);
+    setPredictionFileNameRaw(w.predictionFileName);
+    setSavedReportRaw(w.savedReport);
+    setReportFormatRaw(w.reportFormat);
+    setReportCheckedRaw(w.reportChecked);
+    setChatMessagesRaw(w.chatMessages);
+    setCleanPreviewRaw(w.cleanPreview);
+    setCleanOpLogRaw(w.cleanOpLog);
+    setCleanFillStrategiesRaw(w.cleanFillStrategies);
+    setCleanRenameMapRaw(w.cleanRenameMap);
+    setCleanCastMapRaw(w.cleanCastMap);
+    setCleanEncodeMapRaw(w.cleanEncodeMap);
+    setCleanPromotedRaw(w.cleanPromoted);
+  }, []);
+
+  // ── saveWorkspaceToSession ────────────────────────────────────────────
+  // Writes a workspace snapshot into sessions[idx].workspace in-place.
+  const saveWorkspaceToSession = useCallback((idx, ws) => {
+    if (idx === null || idx === undefined) return;
+    setSessionsRaw((prev) => {
+      if (!prev[idx]) return prev;
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], workspace: ws };
+      return updated;
     });
-  }, [
-    sessionId, columns, summary, fileName, rowCount, totalRowsProcessed,
-    modelId, modelMeta, sessions, activeIdx,
-    trainResults, trainConfig, savedPlots,
-    savedReport, reportFormat, reportChecked,
-    chatMessages, predictionResults, predictionFileName,
-    cleanOpLog, cleanFillStrategies, cleanRenameMap,
-    cleanCastMap, cleanEncodeMap, cleanPromoted,
-    userProfile, projects,
-  ]);
-
-  // ── Internal helpers ──────────────────────────────────────────────────
-  const updateSessionPreview = (idx, previewData) => {
-    setSessionsRaw((prev) =>
-      prev.map((sess, i) =>
-        i === idx
-          ? {
-              ...sess,
-              preview: {
-                columns: previewData.columns || sess.columns || [],
-                rows:    previewData.rows    || [],
-              },
-            }
-          : sess
-      )
-    );
-  };
+  }, []);
 
   // ── resetClean ────────────────────────────────────────────────────────
   const resetClean = useCallback(() => {
@@ -214,8 +236,7 @@ export function DataPilotProvider({ children }) {
     setCleanPromotedRaw(false);
   }, []);
 
-  // ── resetWorkspaceState ───────────────────────────────────────────────
-  // Defined before any function that calls it.
+  // ── resetWorkspaceState (full wipe, used on logout/empty) ─────────────
   const resetWorkspaceState = useCallback(() => {
     setSessionIdRaw(null);
     setFileNameRaw("");
@@ -223,26 +244,9 @@ export function DataPilotProvider({ children }) {
     setSummaryRaw(null);
     setRowCountRaw(0);
     setActiveIdxRaw(null);
-    setCleanPreviewRaw(null);
     setPreviewLoadingRaw(false);
-    setModelIdRaw(null);
-    setModelMetaRaw(null);
-    setTrainResultsRaw(null);
-    setTrainConfigRaw({ selectedModel: "rf", targetCol: "", testSize: 0.2 });
-    setSavedPlotsRaw([]);
-    setPredictionResultsRaw(null);
-    setPredictionFileNameRaw("");
-    setSavedReportRaw(null);
-    setReportFormatRaw("HTML");
-    setReportCheckedRaw(null);
-    setChatMessagesRaw(null);
-    setCleanOpLogRaw([]);
-    setCleanFillStrategiesRaw({});
-    setCleanRenameMapRaw({});
-    setCleanCastMapRaw({});
-    setCleanEncodeMapRaw({});
-    setCleanPromotedRaw(false);
-  }, []);
+    applyWorkspace(freshWorkspace());
+  }, [applyWorkspace]);
 
   // ── markSessionExpired ────────────────────────────────────────────────
   const markSessionExpired = useCallback((sessionIdToExpire) => {
@@ -252,19 +256,26 @@ export function DataPilotProvider({ children }) {
         s.sessionId === sessionIdToExpire ? { ...s, expired: true } : s
       )
     );
-    if (sessionIdToExpire === sessionId) {
-      setCleanPreviewRaw(null);
-    }
+    if (sessionIdToExpire === sessionId) setCleanPreviewRaw(null);
   }, [sessionId]);
 
+  // ── updateSessionPreview ──────────────────────────────────────────────
+  const updateSessionPreview = (idx, previewData) => {
+    setSessionsRaw((prev) =>
+      prev.map((sess, i) =>
+        i === idx
+          ? { ...sess, preview: { columns: previewData.columns || sess.columns || [], rows: previewData.rows || [] } }
+          : sess
+      )
+    );
+  };
+
   // ── removeProjectSessions ─────────────────────────────────────────────
-  // Defined after resetWorkspaceState so the reference is stable.
   const removeProjectSessions = useCallback((projectId) => {
     setSessionsRaw((prev) => {
       const activeSession = activeIdx !== null ? prev[activeIdx] : null;
       const remaining = prev.filter((s) => s.projectId !== projectId);
       const activeWasDeleted = activeSession?.projectId === projectId;
-
       if (activeWasDeleted) {
         queueMicrotask(() => resetWorkspaceState());
       } else {
@@ -273,10 +284,36 @@ export function DataPilotProvider({ children }) {
           : null;
         queueMicrotask(() => setActiveIdxRaw(nextIdx === -1 ? null : nextIdx));
       }
-
       return remaining;
     });
   }, [activeIdx, resetWorkspaceState]);
+
+  // ── Persistence ───────────────────────────────────────────────────────
+  // We persist sessions (each containing its workspace) plus a snapshot of
+  // the currently-active workspace so a hard refresh restores everything.
+  const activeWorkspace = useMemo(() => ({
+    modelId, modelMeta, trainResults, trainedModels, trainConfig, savedPlots,
+    predictionResults, predictionFileName, savedReport, reportFormat,
+    reportChecked, chatMessages, cleanPreview, cleanOpLog,
+    cleanFillStrategies, cleanRenameMap, cleanCastMap, cleanEncodeMap, cleanPromoted,
+  }), [
+    modelId, modelMeta, trainResults, trainedModels, trainConfig, savedPlots,
+    predictionResults, predictionFileName, savedReport, reportFormat,
+    reportChecked, chatMessages, cleanPreview, cleanOpLog,
+    cleanFillStrategies, cleanRenameMap, cleanCastMap, cleanEncodeMap, cleanPromoted,
+  ]);
+
+  useEffect(() => {
+    saveState({
+      sessionId, columns, summary, fileName, rowCount, totalRowsProcessed,
+      sessions, activeIdx,
+      activeWorkspace,
+      userProfile, projects, groqKey,
+    });
+  }, [
+    sessionId, columns, summary, fileName, rowCount, totalRowsProcessed,
+    sessions, activeIdx, activeWorkspace, userProfile, projects, groqKey,
+  ]);
 
   // ── Auth listener ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -296,7 +333,6 @@ export function DataPilotProvider({ children }) {
               firstName:   data.firstName || "",
               lastName:    data.lastName  || "",
             };
-            // Initialize persisted totalRowsProcessed if present
             const persistedTotal = data?.totalRowsProcessed || data?.total_rows_processed || 0;
             setTotalRowsProcessedRaw(persistedTotal);
           }
@@ -319,20 +355,31 @@ export function DataPilotProvider({ children }) {
         try {
           const datasets = await getUserDatasets(firebaseUser.uid);
 
-          const restoredSessions = datasets.map((d) => ({
-            id:            d.id,
-            sessionId:     d.sessionId || d.id,
-            fileName:      d.fileName      || "",
-            fileSize:      d.fileSize      || 0,
-            lastModified:  d.lastModified  || 0,
-            rowCount:      d.rowCount      || 0,
-            columns:       d.columns       || [],
-            summary:       d.summary       || null,
-            projectId:     d.projectId     || null,
-            uploadedAt:    d.uploadedAt    || null,
-            expiryMinutes: d.expiryMinutes || 180,
-            preview:       null,
-          }));
+          // Build a map of workspaces saved in localStorage so we can merge them back
+          const lsSessionsMap = {};
+          (p?.sessions || []).forEach((s) => {
+            if (s.sessionId) lsSessionsMap[s.sessionId] = s;
+          });
+
+          const restoredSessions = datasets.map((d) => {
+            const lsSession = lsSessionsMap[d.sessionId || d.id] || {};
+            return {
+              id:            d.id,
+              sessionId:     d.sessionId || d.id,
+              fileName:      d.fileName      || "",
+              fileSize:      d.fileSize      || 0,
+              lastModified:  d.lastModified  || 0,
+              rowCount:      d.rowCount      || 0,
+              columns:       d.columns       || [],
+              summary:       d.summary       || null,
+              projectId:     d.projectId     || null,
+              uploadedAt:    d.uploadedAt    || null,
+              expiryMinutes: d.expiryMinutes || 180,
+              preview:       null,
+              // Merge saved workspace from localStorage
+              workspace:     lsSession.workspace || freshWorkspace(),
+            };
+          });
 
           const probeSession = async (sid) => {
             const res = await fetch(`${API_BASE}/data/${sid}?limit=1&offset=0`);
@@ -370,6 +417,14 @@ export function DataPilotProvider({ children }) {
             setFileNameRaw(first.fileName || "");
             setRowCountRaw(first.rowCount || 0);
 
+            // If this is the same session that was active when the page was last closed,
+            // use the persisted activeWorkspace (more up-to-date); otherwise use the
+            // workspace stored inside the session slot.
+            const wsToRestore = (p?.sessionId === first.sessionId && p?.activeWorkspace)
+              ? p.activeWorkspace
+              : (first.workspace || freshWorkspace());
+            applyWorkspace(wsToRestore);
+
             if (first.expired) {
               setCleanPreviewRaw(null);
             } else {
@@ -380,7 +435,8 @@ export function DataPilotProvider({ children }) {
                   const data = probeResult.value;
                   const previewRows = data.data    || [];
                   const previewCols = data.columns || first.columns || [];
-                  setCleanPreviewRaw(previewRows);
+                  // Only overwrite cleanPreview if the workspace didn't already restore one
+                  if (!wsToRestore.cleanPreview) setCleanPreviewRaw(previewRows);
                   updateSessionPreview(idx, { columns: previewCols, rows: previewRows });
                   if (previewCols.length) setColumnsRaw(previewCols);
                 }
@@ -394,7 +450,7 @@ export function DataPilotProvider({ children }) {
             }
           } else {
             setActiveIdxRaw(null);
-            setCleanPreviewRaw(null);
+            applyWorkspace(freshWorkspace());
           }
         } catch (err) {
           console.error("Failed to restore sessions:", err);
@@ -404,7 +460,7 @@ export function DataPilotProvider({ children }) {
         setProjectsRaw([]);
         setSessionsRaw([]);
         setActiveIdxRaw(null);
-        setCleanPreviewRaw(null);
+        applyWorkspace(freshWorkspace());
       }
 
       setAuthLoading(false);
@@ -421,16 +477,11 @@ export function DataPilotProvider({ children }) {
     const displayName = `${firstName} ${lastName}`.trim();
     if (cred?.user) {
       await saveUserProfile(cred.user, {
-        firstName,
-        lastName,
-        displayName,
+        firstName, lastName, displayName,
         createdAt: serverTimestamp(),
       });
       setUserProfileRaw((prev) => ({
-        ...prev,
-        firstName,
-        lastName,
-        displayName,
+        ...prev, firstName, lastName, displayName,
         email: cred.user.email || email || "",
       }));
     }
@@ -441,92 +492,146 @@ export function DataPilotProvider({ children }) {
   const logout = async () => { await signOutUser(); reset(); };
 
   // ── Session management ────────────────────────────────────────────────
-  const switchSession = async (idx) => {
-    const s = sessions[idx];
-    if (!s) return;
 
-    setActiveIdxRaw(idx);
-    setSessionIdRaw(s.sessionId);
-    setColumnsRaw(s.columns || []);
-    setSummaryRaw(s.summary || null);
-    setFileNameRaw(s.fileName || "");
-    setRowCountRaw(s.rowCount || 0);
+  /**
+   * _doSwitch — the single path for all session transitions.
+   *
+   * 1. Captures the live workspace and writes it back into the outgoing slot.
+   * 2. Applies the incoming session's identity and workspace synchronously.
+   * 3. Refreshes cleanPreview from the backend (async).
+   *
+   * Pass outgoingIdx = null when the outgoing session is being deleted
+   * (we don't want to save its workspace back).
+   */
+  const _doSwitch = useCallback(async ({
+    nextIdx,
+    nextSession,
+    outgoingIdx,
+    // snapshot of the outgoing workspace — must be passed in as a plain object
+    // because React state hasn't flushed yet when this is called
+    outgoingWorkspace,
+  }) => {
+    // 1. Persist outgoing workspace
+    if (outgoingIdx !== null && outgoingIdx !== undefined && outgoingWorkspace) {
+      saveWorkspaceToSession(outgoingIdx, outgoingWorkspace);
+    }
 
-    setModelIdRaw(null);
-    setModelMetaRaw(null);
-    setTrainResultsRaw(null);
-    setTrainConfigRaw({ selectedModel: "rf", targetCol: "", testSize: 0.2 });
-    setSavedPlotsRaw([]);
-    setSavedReportRaw(null);
-    setChatMessagesRaw(null);
-    setPredictionResultsRaw(null);
-    setPredictionFileNameRaw("");
-    resetClean();
+    // 2. Switch identity
+    setActiveIdxRaw(nextIdx);
+    setSessionIdRaw(nextSession.sessionId);
+    setColumnsRaw(nextSession.columns || []);
+    setSummaryRaw(nextSession.summary || null);
+    setFileNameRaw(nextSession.fileName || "");
+    setRowCountRaw(nextSession.rowCount || 0);
 
-    if (!s.sessionId) return;
+    // 3. Restore workspace synchronously — pages will re-render with correct data
+    applyWorkspace(nextSession.workspace || freshWorkspace());
 
+    if (!nextSession.sessionId) return;
+
+    // 4. Refresh cleanPreview from backend
     setPreviewLoadingRaw(true);
     try {
-      const data = await fetchSessionData(s.sessionId);
+      const data = await fetchSessionData(nextSession.sessionId);
       const previewRows = data.data    || [];
-      const previewCols = data.columns || s.columns || [];
+      const previewCols = data.columns || nextSession.columns || [];
       setCleanPreviewRaw(previewRows);
-      updateSessionPreview(idx, { columns: previewCols, rows: previewRows });
+      updateSessionPreview(nextIdx, { columns: previewCols, rows: previewRows });
       if (previewCols.length) setColumnsRaw(previewCols);
     } catch (err) {
       if (err?.code === "SESSION_EXPIRED") {
-        markSessionExpired(s.sessionId);
+        markSessionExpired(nextSession.sessionId);
       } else {
-        console.error(`Failed to load preview for session ${s.sessionId}:`, err);
+        console.error(`Failed to load preview for session ${nextSession.sessionId}:`, err);
         markOfflineIfFirestoreErr(err);
         setCleanPreviewRaw(null);
       }
     } finally {
       setPreviewLoadingRaw(false);
     }
-  };
+  }, [applyWorkspace, saveWorkspaceToSession, markSessionExpired, markOfflineIfFirestoreErr]);
 
-  const addSession = async (newSession) => {
+  const switchSession = useCallback(async (idx) => {
+    const s = sessions[idx];
+    if (!s) return;
+    // Capture current workspace before any state changes
+    const outgoingWorkspace = {
+      modelId, modelMeta, trainResults, trainedModels, trainConfig, savedPlots,
+      predictionResults, predictionFileName, savedReport, reportFormat,
+      reportChecked, chatMessages, cleanPreview, cleanOpLog,
+      cleanFillStrategies, cleanRenameMap, cleanCastMap, cleanEncodeMap, cleanPromoted,
+    };
+    await _doSwitch({ nextIdx: idx, nextSession: s, outgoingIdx: activeIdx, outgoingWorkspace });
+  }, [
+    sessions, activeIdx, _doSwitch,
+    modelId, modelMeta, trainResults, trainedModels, trainConfig, savedPlots,
+    predictionResults, predictionFileName, savedReport, reportFormat,
+    reportChecked, chatMessages, cleanPreview, cleanOpLog,
+    cleanFillStrategies, cleanRenameMap, cleanCastMap, cleanEncodeMap, cleanPromoted,
+  ]);
+
+  const addSession = useCallback(async (newSession) => {
+    // New uploads always start with a fresh workspace
+    const sessionWithWorkspace = { ...newSession, workspace: freshWorkspace() };
+
     let resolvedIdx = -1;
     let isReplacement = false;
 
     setSessionsRaw((prev) => {
-      const existsAt = prev.findIndex((s) => s.fileName === newSession.fileName);
+      const existsAt = prev.findIndex(
+        (s) => s.sessionId === newSession.sessionId || s.fileName === newSession.fileName
+      );
       if (existsAt !== -1) {
         isReplacement = true;
         resolvedIdx   = existsAt;
         const updated = [...prev];
-        updated[existsAt] = newSession;
+        // Replace slot but give it a clean workspace — it's a fresh upload
+        updated[existsAt] = sessionWithWorkspace;
         return updated;
       }
-      const updated = [...prev, newSession];
+      const updated = [...prev, sessionWithWorkspace];
       resolvedIdx   = updated.length - 1;
       return updated;
     });
 
     await Promise.resolve();
-
     if (resolvedIdx === -1) return;
-    if (isReplacement) { await switchSession(resolvedIdx); return; }
 
+    // Capture outgoing workspace before switching
+    const outgoingWorkspace = {
+      modelId, modelMeta, trainResults, trainedModels, trainConfig, savedPlots,
+      predictionResults, predictionFileName, savedReport, reportFormat,
+      reportChecked, chatMessages, cleanPreview, cleanOpLog,
+      cleanFillStrategies, cleanRenameMap, cleanCastMap, cleanEncodeMap, cleanPromoted,
+    };
+
+    // Save outgoing workspace to its slot (not the replacement slot)
+    if (activeIdx !== null && !isReplacement) {
+      saveWorkspaceToSession(activeIdx, outgoingWorkspace);
+    } else if (activeIdx !== null && isReplacement && activeIdx !== resolvedIdx) {
+      saveWorkspaceToSession(activeIdx, outgoingWorkspace);
+    }
+
+    // Switch identity and apply fresh workspace
     setActiveIdxRaw(resolvedIdx);
-    setSessionIdRaw(newSession.sessionId);
-    setColumnsRaw(newSession.columns || []);
-    setSummaryRaw(newSession.summary || null);
-    setFileNameRaw(newSession.fileName || "");
-    setRowCountRaw(newSession.rowCount || 0);
+    setSessionIdRaw(sessionWithWorkspace.sessionId);
+    setColumnsRaw(sessionWithWorkspace.columns || []);
+    setSummaryRaw(sessionWithWorkspace.summary || null);
+    setFileNameRaw(sessionWithWorkspace.fileName || "");
+    setRowCountRaw(sessionWithWorkspace.rowCount || 0);
+    applyWorkspace(freshWorkspace());
 
-    if (!newSession.sessionId) return;
+    if (!sessionWithWorkspace.sessionId) return;
 
     setPreviewLoadingRaw(true);
     try {
-      const data = await fetchSessionData(newSession.sessionId);
+      const data = await fetchSessionData(sessionWithWorkspace.sessionId);
       const previewRows = data.data    || [];
-      const previewCols = data.columns || newSession.columns || [];
+      const previewCols = data.columns || sessionWithWorkspace.columns || [];
       setCleanPreviewRaw(previewRows);
       setSessionsRaw((prev) =>
         prev.map((sess) =>
-          sess.sessionId === newSession.sessionId
+          sess.sessionId === sessionWithWorkspace.sessionId
             ? { ...sess, preview: { columns: previewCols, rows: previewRows } }
             : sess
         )
@@ -534,7 +639,7 @@ export function DataPilotProvider({ children }) {
       if (previewCols.length) setColumnsRaw(previewCols);
     } catch (err) {
       if (err?.code === "SESSION_EXPIRED") {
-        markSessionExpired(newSession.sessionId);
+        markSessionExpired(sessionWithWorkspace.sessionId);
       } else {
         console.error("Failed to load preview for new session:", err);
         markOfflineIfFirestoreErr(err);
@@ -543,16 +648,21 @@ export function DataPilotProvider({ children }) {
     } finally {
       setPreviewLoadingRaw(false);
     }
-  };
+  }, [
+    activeIdx, applyWorkspace, saveWorkspaceToSession, markSessionExpired, markOfflineIfFirestoreErr,
+    modelId, modelMeta, trainResults, trainedModels, trainConfig, savedPlots,
+    predictionResults, predictionFileName, savedReport, reportFormat,
+    reportChecked, chatMessages, cleanPreview, cleanOpLog,
+    cleanFillStrategies, cleanRenameMap, cleanCastMap, cleanEncodeMap, cleanPromoted,
+  ]);
 
-  const removeSession = async (idx) => {
+  const removeSession = useCallback(async (idx) => {
     const sessionToRemove = sessions[idx];
     const updated = sessions.filter((_, i) => i !== idx);
 
     if (sessionToRemove?.sessionId) {
       fetch(`${API_BASE}/session/${sessionToRemove.sessionId}`, { method: "DELETE" }).catch(() => {});
     }
-
     if (sessionToRemove?.sessionId && user?.uid) {
       deleteDataset(user.uid, sessionToRemove.sessionId).catch((err) => {
         console.error("Failed to delete dataset from Firestore:", err);
@@ -569,62 +679,19 @@ export function DataPilotProvider({ children }) {
       setSummaryRaw(null);
       setFileNameRaw("");
       setRowCountRaw(0);
-      setCleanPreviewRaw(null);
-      setModelIdRaw(null);
-      setModelMetaRaw(null);
-      setTrainResultsRaw(null);
-      setTrainConfigRaw({ selectedModel: "rf", targetCol: "", testSize: 0.2 });
-      setSavedPlotsRaw([]);
-      setSavedReportRaw(null);
-      setChatMessagesRaw(null);
-      setPredictionResultsRaw(null);
-      setPredictionFileNameRaw("");
-      resetClean();
+      applyWorkspace(freshWorkspace());
       return;
     }
 
+    // Switch to neighbour — no need to save the deleted session's workspace
     const newIdx = Math.min(idx, updated.length - 1);
-    const s = updated[newIdx];
-
-    setActiveIdxRaw(newIdx);
-    setSessionIdRaw(s.sessionId);
-    setColumnsRaw(s.columns || []);
-    setSummaryRaw(s.summary || null);
-    setFileNameRaw(s.fileName || "");
-    setRowCountRaw(s.rowCount || 0);
-    setModelIdRaw(null);
-    setModelMetaRaw(null);
-    setTrainResultsRaw(null);
-    setTrainConfigRaw({ selectedModel: "rf", targetCol: "", testSize: 0.2 });
-    setSavedPlotsRaw([]);
-    setSavedReportRaw(null);
-    setChatMessagesRaw(null);
-    setPredictionResultsRaw(null);
-    setPredictionFileNameRaw("");
-    resetClean();
-
-    if (!s.sessionId) return;
-
-    setPreviewLoadingRaw(true);
-    try {
-      const data = await fetchSessionData(s.sessionId);
-      const previewRows = data.data    || [];
-      const previewCols = data.columns || s.columns || [];
-      setCleanPreviewRaw(previewRows);
-      updateSessionPreview(newIdx, { columns: previewCols, rows: previewRows });
-      if (previewCols.length) setColumnsRaw(previewCols);
-    } catch (err) {
-      if (err?.code === "SESSION_EXPIRED") {
-        markSessionExpired(s.sessionId);
-      } else {
-        console.error(`Failed to load preview for session ${s.sessionId}:`, err);
-        markOfflineIfFirestoreErr(err);
-        setCleanPreviewRaw(null);
-      }
-    } finally {
-      setPreviewLoadingRaw(false);
-    }
-  };
+    await _doSwitch({
+      nextIdx: newIdx,
+      nextSession: updated[newIdx],
+      outgoingIdx: null,        // don't save the deleted session's workspace
+      outgoingWorkspace: null,
+    });
+  }, [sessions, user, applyWorkspace, _doSwitch, markOfflineIfFirestoreErr]);
 
   // ── reset (full sign-out wipe) ────────────────────────────────────────
   const reset = () => {
@@ -669,6 +736,7 @@ export function DataPilotProvider({ children }) {
       removeProjectSessions,
 
       trainResults,  setTrainResults:  setTrainResultsRaw,
+      trainedModels, setTrainedModels: setTrainedModelsRaw,
       trainConfig,   setTrainConfig:   setTrainConfigRaw,
       savedPlots,    setSavedPlots:    setSavedPlotsRaw,
 
@@ -699,7 +767,6 @@ export function DataPilotProvider({ children }) {
       projects,
       setProjects: setProjectsRaw,
 
-      // Offline/network state
       isOffline,
       setIsOffline,
       retryConnection,
@@ -713,11 +780,12 @@ export function DataPilotProvider({ children }) {
       user, authLoading, sessionId, activeSessionExpired, columns, summary, fileName, rowCount,
       totalRowsProcessed,
       cleanPreview, previewLoading, modelId, modelMeta, sessions, activeIdx,
-      trainResults, trainConfig, savedPlots, savedReport, reportFormat,
+      trainResults, trainConfig, trainedModels, savedPlots, savedReport, reportFormat,
       reportChecked, chatMessages, predictionResults, predictionFileName,
       cleanOpLog, cleanFillStrategies, cleanRenameMap, cleanCastMap,
       cleanEncodeMap, cleanPromoted, groqKey, userProfile, theme, accentColor, projects,
       markSessionExpired, resetWorkspaceState, removeProjectSessions,
+      switchSession, addSession, removeSession,
       isOffline, retryingConnection, retryConnection, setIsOffline,
     ]
   );

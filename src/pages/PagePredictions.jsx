@@ -20,6 +20,7 @@ export default function PagePredictions({ setPage }) {
     predictionResults:  results,   setPredictionResults:  setResults,
     predictionFileName: fileName,  setPredictionFileName: setFileName,
     activeSessionExpired,
+    trainedModels, setModelId, setModelMeta, setTrainResults,
   } = useDataPilot();
 
   const [loading, setLoading] = useState(false);
@@ -65,6 +66,17 @@ export default function PagePredictions({ setPage }) {
     URL.revokeObjectURL(url);
   };
 
+  const MODEL_LABELS = { rf: "Random Forest", lr: "Logistic Reg.", xgb: "XGBoost", svm: "SVM" };
+  const MODEL_COLORS = { rf: "var(--accent2)", lr: "var(--cyan)", xgb: "var(--green)", svm: "var(--amber)" };
+
+  const handleSwitchModel = (m) => {
+    setModelId(m.model_id);
+    setModelMeta({ type: m.model_type, task: m.task, metrics: m.metrics, featureImportance: m.feature_importance });
+    setTrainResults(m);
+    setResults(null);
+    setFileName("");
+  };
+
   const isClassification = modelMeta?.task === "classification";
 
   if (!sessionId || activeSessionExpired) {
@@ -108,6 +120,39 @@ export default function PagePredictions({ setPage }) {
           Score new data using your trained {modelMeta?.type?.toUpperCase()} model ({modelMeta?.task})
         </div>
       </div>
+
+      {/* Model switcher — shown when multiple models trained */}
+      {trainedModels?.length > 1 && (
+        <div style={{ marginBottom: 16, padding: "10px 14px", background: "var(--bg3)", border: "1px solid var(--border2)", borderRadius: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, color: "var(--text3)", fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.08em", flexShrink: 0 }}>Active model:</span>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {trainedModels.map(m => {
+              const isActive = m.model_id === modelId;
+              const color = MODEL_COLORS[m.model_type] || "var(--accent2)";
+              return (
+                <button
+                  key={m.model_id}
+                  onClick={() => handleSwitchModel(m)}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 6, border: `1px solid ${isActive ? "rgba(108,99,255,0.4)" : "var(--border)"}`, background: isActive ? "var(--accent-dim)" : "transparent", color: isActive ? "var(--accent2)" : "var(--text3)", fontSize: 11, fontWeight: isActive ? 600 : 400, cursor: "pointer", transition: "all 0.15s" }}
+                >
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: isActive ? "var(--accent2)" : color }} />
+                  {MODEL_LABELS[m.model_type] || m.model_type}
+                  {m.metrics?.accuracy != null && (
+                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, opacity: 0.7 }}>
+                      {(m.metrics.accuracy * 100).toFixed(0)}%
+                    </span>
+                  )}
+                  {m.metrics?.r2 != null && m.metrics?.accuracy == null && (
+                    <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, opacity: 0.7 }}>
+                      R²{m.metrics.r2.toFixed(2)}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-2 mb-5">
         <input ref={fileInputRef} type="file" accept=".csv,.xlsx" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
