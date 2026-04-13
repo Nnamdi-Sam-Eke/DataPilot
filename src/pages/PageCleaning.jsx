@@ -64,6 +64,15 @@ function isNumeric(col, summary) {
   return summary?.[col]?.mean !== undefined;
 }
 
+// Suggest an encoding strategy based on cardinality (frontend-only)
+function suggestEncoding(unique) {
+  const n = typeof unique === "number" ? unique : parseInt(unique, 10);
+  if (isNaN(n) || !isFinite(n)) return "label";
+  if (n <= 2) return "label";    // binary → label
+  if (n <= 10) return "onehot";  // low cardinality → one-hot
+  return "label";                // high cardinality → label to avoid explosion
+}
+
 // ── operation log item ───────────────────────────────────────────────────────
 function LogItem({ op, onUndo }) {
   const icons = {
@@ -574,8 +583,9 @@ const categoricalCols = safeColumns.filter((c) => {
       </div>
     ) : (
       categoricalCols.map((col) => {
-        const current = cleanEncodeMap[col] ?? "label";
         const uniqueCount = summary?.[col]?.unique ?? "—";
+        const suggested = suggestEncoding(uniqueCount);
+        const current = cleanEncodeMap[col] ?? suggested;
         const topValue = summary?.[col]?.top ?? "—";
 
         return (
