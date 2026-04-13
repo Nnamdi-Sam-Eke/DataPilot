@@ -17,6 +17,7 @@ import {
   useNavigate,
   useLocation,
 } from "react-router-dom";
+import { Analytics } from "@vercel/analytics/next"
 import { doc, getDoc, setDoc }  from "firebase/firestore";
 import { db }                   from "./services/firebase";
 import { saveUserProfile }      from "./services/firestore";
@@ -543,6 +544,7 @@ export default function App() {
       <DataPilotProvider>
         <AppShell />
       </DataPilotProvider>
+      <Analytics />
     </BrowserRouter>
   );
 }

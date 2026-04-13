@@ -1,5 +1,5 @@
 fastapi
-uvicorn[standard]   
+uvicorn[standard]
 pandas
 numpy
 python-multipart
@@ -11,4 +11,5 @@ groq
 python-dotenv
 chardet
 google-cloud-firestore
-python-dotenv
+openpyxl
+xlrd
