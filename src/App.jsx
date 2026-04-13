@@ -17,7 +17,7 @@ import {
   useNavigate,
   useLocation,
 } from "react-router-dom";
-import { Analytics } from "@vercel/analytics/next"
+import { Analytics } from "@vercel/analytics/react";
 import { doc, getDoc, setDoc }  from "firebase/firestore";
 import { db }                   from "./services/firebase";
 import { saveUserProfile }      from "./services/firestore";
@@ -540,11 +540,11 @@ function OfflinePopup({ open, onRetry, retrying }) {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <DataPilotProvider>
-        <AppShell />
-      </DataPilotProvider>
-      <Analytics />
-    </BrowserRouter>
+  <BrowserRouter>
+  <Analytics />
+  <DataPilotProvider>
+    <AppShell />
+  </DataPilotProvider>
+</BrowserRouter>
   );
 }
