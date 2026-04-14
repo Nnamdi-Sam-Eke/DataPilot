@@ -329,11 +329,12 @@ export default function PageTrain({ setPage }) {
 
   // ── Delete a trained model from the list ───────────────────────────────
   const handleDelete = (modelIdToRemove) => {
-    setTrainedModels(prev => prev.filter(m => m.model_id !== modelIdToRemove));
-    // If deleted model was active, fall back to most recent remaining
-    if (modelIdToRemove === modelId) {
-      setTrainedModels(prev => {
-        const remaining = prev.filter(m => m.model_id !== modelIdToRemove);
+    // Do everything in one setTrainedModels call so we never operate on stale state
+    setTrainedModels(prev => {
+      const remaining = prev.filter(m => m.model_id !== modelIdToRemove);
+
+      // If the deleted model was the active one, switch to the most recent remaining
+      if (modelIdToRemove === modelId) {
         if (remaining.length > 0) {
           const fallback = remaining[remaining.length - 1];
           setModelId(fallback.model_id);
@@ -346,11 +347,13 @@ export default function PageTrain({ setPage }) {
           setTrainResults(null);
           setDetailModelId(null);
         }
-        return remaining;
-      });
-    } else if (modelIdToRemove === detailModelId) {
-      setDetailModelId(modelId);
-    }
+      } else if (modelIdToRemove === detailModelId) {
+        // Detail panel was showing the deleted model — fall back to active
+        setDetailModelId(modelId);
+      }
+
+      return remaining;
+    });
   };
 
   // ── Empty / expired states ─────────────────────────────────────────────
