@@ -120,12 +120,12 @@ function SessionExpiryBanner() {
     });
   };
 
-  return (
+    return (
     <div style={{
       display: "flex", alignItems: "center", gap: "0.75rem",
       padding: "0.55rem 1.1rem",
       background: bgColor, borderBottom: `1px solid ${borderColor}`,
-      fontSize: "0.82rem", color: "var(--text-primary, #e0e0e0)", flexShrink: 0,
+      fontSize: "0.82rem", color: "var(--text)", flexShrink: 0,
     }}>
       <span style={{ color: iconColor, fontSize: "1rem", flexShrink: 0 }}>⏳</span>
       <span style={{ flex: 1 }}>
@@ -195,7 +195,7 @@ function ReturnNotificationBanner() {
       display: "flex", alignItems: "center", gap: "0.75rem",
       padding: "0.55rem 1.1rem",
       background: "rgba(220,53,69,0.1)", borderBottom: "1px solid #dc3545",
-      fontSize: "0.82rem", color: "var(--text-primary, #e0e0e0)", flexShrink: 0,
+      fontSize: "0.82rem", color: "var(--text)", flexShrink: 0,
     }}>
       <span style={{ color: "#ff4d4d", fontSize: "1rem", flexShrink: 0 }}>⚠️</span>
       <span style={{ flex: 1 }}>
