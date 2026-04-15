@@ -183,6 +183,10 @@ async def train_model(payload: Dict):
                 key=lambda x: x["importance"], reverse=True
             )[:15]
 
+        # Save sizes BEFORE releasing large training arrays — used later in metadata
+        train_size_val = len(X_train)
+        test_size_val = len(X_test)
+
         # Release large training arrays before storing model — keeps RAM lean
         import gc
         try:
@@ -206,8 +210,8 @@ async def train_model(payload: Dict):
             "label_encoder": le_y,
             "model_type": model_type,
             "metrics": metrics,
-            "train_size": len(X_train),
-            "test_size": len(X_test),
+            "train_size": train_size_val,
+            "test_size": test_size_val,
             "created_at": datetime.utcnow(),
         }
 
@@ -221,8 +225,8 @@ async def train_model(payload: Dict):
             "confusion_matrix": cm,
             "classes": classes,
             "feature_importance": feature_importance,
-            "train_size": len(X_train),
-            "test_size": len(X_test),
+            "train_size": train_size_val,
+            "test_size": test_size_val,
         })
 
     except HTTPException:
