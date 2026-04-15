@@ -151,6 +151,10 @@ export function DataPilotProvider({ children }) {
   const [retryingConnection, setRetryingConnection] = useState(false);
   const [connectionRetryKey, setConnectionRetryKey] = useState(0);
 
+  // ── Global API error (visible across all pages)
+  const [globalApiError, setGlobalApiError] = useState(null);
+  const [globalApiRetryKey, setGlobalApiRetryKey] = useState(0);
+
   useEffect(() => {
     const on  = () => setIsOffline(false);
     const off = () => setIsOffline(true);
@@ -170,6 +174,11 @@ export function DataPilotProvider({ children }) {
     } finally {
       setRetryingConnection(false);
     }
+  }, []);
+
+  const retryGlobalApi = useCallback(() => {
+    setGlobalApiError(null);
+    setGlobalApiRetryKey((k) => k + 1);
   }, []);
 
   useEffect(() => {
@@ -772,6 +781,12 @@ export function DataPilotProvider({ children }) {
       retryConnection,
       retryingConnection,
       connectionRetryKey,
+
+      // Global API error helpers
+      globalApiError,
+      setGlobalApiError,
+      globalApiRetryKey,
+      retryGlobalApi,
 
       reset,
     }),

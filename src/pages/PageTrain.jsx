@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Icons } from "../shared/icons.jsx";
 import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";
+import ApiFallback from "../components/ApiFallback.jsx";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -460,9 +461,7 @@ export default function PageTrain({ setPage }) {
           </div>
 
           {error && (
-            <div style={{ padding: "12px 14px", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: 10, fontSize: 12.5, color: "var(--red)" }}>
-              {error}
-            </div>
+            <ApiFallback message={error} onRetry={startTrain} />
           )}
 
           <button className="btn-primary" style={{ justifyContent: "center" }} onClick={startTrain} disabled={training || !targetCol}>

@@ -12,12 +12,15 @@ import numpy as np
 router = APIRouter()
 
 DATA_CACHE = {}
-EXPIRY_MINUTES = 180
+EXPIRY_MINUTES = 60
 
 PLAN_EXPIRY: Dict[str, int] = {
-    "free": 180,
-    "pro":  1440,
+    "free": 60,    # 1 hour — keeps memory pressure low on free Render tier
+    "pro":  720,   # 12 hours
 }
+
+# Max rows stored in-memory for free plan users
+MAX_ROWS_FREE = 50_000
 
 # Global user-visible stats (in-memory)
 USER_STATS = {
@@ -145,6 +148,14 @@ async def process_file(file: UploadFile, plan: str = "free") -> Dict[str, Any]:
 
         if df.empty:
             return sanitize_for_json({"file_name": file.filename, "error": "File is empty"})
+
+        # Cap row count for free plan to protect server memory
+        if plan == "free" and len(df) > MAX_ROWS_FREE:
+            df = df.sample(MAX_ROWS_FREE, random_state=42).reset_index(drop=True)
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                f"Free plan: dataset sampled to {MAX_ROWS_FREE} rows ({file.filename})"
+            )
 
         # Coerce object columns that look like dates.
         # format='mixed' handles inconsistent date formats without the deprecation warning.

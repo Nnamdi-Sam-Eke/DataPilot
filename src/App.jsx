@@ -23,6 +23,7 @@ import { db }                   from "./services/firebase";
 import { saveUserProfile }      from "./services/firestore";
 import { styles }               from "./styles.jsx";
 import { DataPilotProvider, useDataPilot, API_BASE } from "./DataPilotContext.jsx";
+import ApiFallback from "./components/ApiFallback.jsx";
 import Sidebar      from "./components/Sidebar.jsx";
 import Topbar       from "./components/Topbar.jsx";
 import PageAuth     from "./pages/PageAuth.jsx";
@@ -237,6 +238,9 @@ function AppShell() {
     retryConnection,
     retryingConnection,
     connectionRetryKey,
+    globalApiError,
+    retryGlobalApi,
+    setGlobalApiError,
   } = useDataPilot();
   const navigate              = useNavigate();
   const location              = useLocation();
@@ -261,11 +265,19 @@ function AppShell() {
 
   // ── Backend keep-alive (Render free tier anti-sleep) ───────────────────
   useEffect(() => {
-    const ping = () => fetch(`${API_BASE}/health`).catch(() => {});
+    const ping = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/health`);
+        if (!res.ok) setGlobalApiError("Backend health check failed");
+        else setGlobalApiError(null);
+      } catch (err) {
+        setGlobalApiError("Could not reach backend");
+      }
+    };
     ping();
     const interval = setInterval(ping, 9 * 60 * 1000); // every 9 min
     return () => clearInterval(interval);
-  }, []);
+  }, [setGlobalApiError]);
 
   // ── Load betaProfile + onboarding flags; retry-aware ─────────────────────
   useEffect(() => {
@@ -457,6 +469,11 @@ function AppShell() {
           onRetry={retryConnection}
           retrying={retryingConnection}
         />
+        {globalApiError && (
+          <div style={{ position: "fixed", left: 16, right: 16, top: 16, zIndex: 9998 }}>
+            <ApiFallback message={globalApiError} onRetry={retryGlobalApi} />
+          </div>
+        )}
         {body}
       </>
     );

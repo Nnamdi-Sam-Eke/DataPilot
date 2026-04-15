@@ -68,7 +68,7 @@ async def cleanup_expired_sessions():
         except Exception as e:
             logger.error(f"Error during session cleanup: {e}")
 
-        await asyncio.sleep(600)
+        await asyncio.sleep(300)   # every 5 minutes
 
 # ================= LIFESPAN =================
 @asynccontextmanager
@@ -80,8 +80,8 @@ async def lifespan(app: FastAPI):
     logger.info("📤 Single Upload: POST /upload")
     logger.info("📦 Batch Upload:  POST /batch_uploads")
     logger.info("📊 Get Data:      GET  /data/{session_id}")
-    logger.info("💾 Cache Expiry:  180 min (Free) / 1440 min (Pro)")
-    logger.info("🧹 Auto-cleanup:  Every 10 minutes")
+    logger.info("💾 Cache Expiry:  60 min (Free) / 720 min (Pro)")
+    logger.info("🧹 Auto-cleanup:  Every 5 minutes")
     logger.info("=" * 50)
 
     cleanup_task = asyncio.create_task(cleanup_expired_sessions())

@@ -183,6 +183,18 @@ async def train_model(payload: Dict):
                 key=lambda x: x["importance"], reverse=True
             )[:15]
 
+        # Release large training arrays before storing model — keeps RAM lean
+        import gc
+        try:
+            del X_train, X_test, y_train, y_test, y_pred
+            if use_scaled:
+                del X_train_scaled, X_test_scaled
+            else:
+                del Xtr, Xte
+        except NameError:
+            pass
+        gc.collect()
+
         # Store model for predictions and export
         model_id = str(uuid.uuid4())
         MODEL_STORE[model_id] = {
