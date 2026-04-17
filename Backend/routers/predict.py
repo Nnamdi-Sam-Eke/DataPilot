@@ -48,6 +48,9 @@ async def predict(model_id: str, file: UploadFile = File(...)):
     feature_cols = store["feature_columns"]
     is_classification = store["is_classification"]
     le_y = store["label_encoder"]
+    # Use the encoders fitted during training — re-fitting would give different
+    # integer mappings for unseen or reordered category sets
+    feature_label_encoders = store.get("feature_label_encoders", {})
 
     try:
         content = await file.read()
@@ -87,10 +90,22 @@ async def predict(model_id: str, file: UploadFile = File(...)):
 
         X = df[feature_cols].copy()
 
-        # Encode categoricals
+        # Encode categoricals using the encoders fitted during training.
+        # Unseen labels are mapped to -1 (out-of-vocabulary) rather than
+        # causing a KeyError or producing wrong integer mappings.
         for col in X.select_dtypes(include=["object", "category"]).columns:
-            le = LabelEncoder()
-            X[col] = le.fit_transform(X[col].astype(str))
+            le = feature_label_encoders.get(col)
+            if le is not None:
+                known = set(le.classes_)
+                X[col] = X[col].astype(str).map(
+                    lambda v, _le=le, _known=known: (
+                        int(_le.transform([v])[0]) if v in _known else -1
+                    )
+                )
+            else:
+                # Fallback: fit a new encoder (old models trained before this change)
+                fallback_le = LabelEncoder()
+                X[col] = fallback_le.fit_transform(X[col].astype(str))
 
         X = X.fillna(X.median(numeric_only=True))
 

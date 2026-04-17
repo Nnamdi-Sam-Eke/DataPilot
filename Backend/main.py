@@ -10,6 +10,8 @@ import pandas as pd
 import numpy as np
 import json
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+from pathlib import Path
 from routers import upload, insights, plots, codegen
 from routers.clean import router as clean_router
 try:
@@ -24,6 +26,10 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# Shared GROQ client — initialised at app startup in lifespan()
+GROQ_CLIENT = None
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 # ================= CUSTOM JSON ENCODER =================
 class NaNEncoder(json.JSONEncoder):
@@ -50,20 +56,90 @@ class NaNEncoder(json.JSONEncoder):
 async def cleanup_expired_sessions():
     while True:
         try:
+            import gc
             from routers.upload import DATA_CACHE
+            from routers.clean import CLEAN_STORE
 
+            # ── Evict expired DATA_CACHE sessions ────────────────────────
             expired = [
                 sid for sid, session in DATA_CACHE.items()
                 if datetime.utcnow() - session["created_at"] > timedelta(
                     minutes=session.get("expiry_minutes", 180)
                 )
             ]
-
             for sid in expired:
+                # remove persisted session file if present
+                try:
+                    fp = DATA_CACHE[sid].get("file_path")
+                    if fp and os.path.exists(fp):
+                        os.remove(fp)
+                except Exception:
+                    pass
+                # remove context cache entry if present
+                try:
+                    from routers.insights import CONTEXT_CACHE
+                    CONTEXT_CACHE.pop(sid, None)
+                except Exception:
+                    pass
+                # remove report cache entry if present
+                try:
+                    from routers.report import REPORT_CACHE
+                    REPORT_CACHE.pop(sid, None)
+                except Exception:
+                    pass
                 del DATA_CACHE[sid]
+                CLEAN_STORE.pop(sid, None)   # Evict paired CLEAN_STORE entry
 
             if expired:
-                logger.info(f"🧹 Cleaned up {len(expired)} expired sessions")
+                logger.info(f"🧹 Cleaned up {len(expired)} expired sessions (+ CLEAN_STORE entries)")
+
+            # ── Expire models after their configured lifetime (created_at + expiry_minutes)
+            if _has_train:
+                try:
+                    from routers.train import MODEL_STORE, MAX_MODELS
+                except Exception:
+                    from routers.train import MODEL_STORE
+                    MAX_MODELS = 5
+
+                expired_models = [
+                    mid for mid, m in MODEL_STORE.items()
+                    if datetime.utcnow() - m.get("created_at", datetime.utcnow()) > timedelta(minutes=m.get("expiry_minutes", 60))
+                ]
+
+                for mid in expired_models:
+                    try:
+                        fp = MODEL_STORE[mid].get("file_path")
+                        if fp and os.path.exists(fp):
+                            os.remove(fp)
+                    except Exception:
+                        pass
+
+                    try:
+                        del MODEL_STORE[mid]
+                    except Exception:
+                        pass
+
+                if expired_models:
+                    logger.info(f"🧹 Expired {len(expired_models)} model(s)")
+
+                # Enforce hard limit: delete oldest by last_accessed if over cap
+                try:
+                    if len(MODEL_STORE) > MAX_MODELS:
+                        # sort by last_accessed (oldest first)
+                        ordered = sorted(MODEL_STORE.items(), key=lambda kv: kv[1].get("last_accessed", kv[1].get("created_at")))
+                        while len(MODEL_STORE) > MAX_MODELS:
+                            oldest_mid = ordered.pop(0)[0]
+                            try:
+                                fp = MODEL_STORE[oldest_mid].get("file_path")
+                                if fp and os.path.exists(fp):
+                                    os.remove(fp)
+                            except Exception:
+                                pass
+                            del MODEL_STORE[oldest_mid]
+                except Exception:
+                    pass
+
+                gc.collect()
 
         except Exception as e:
             logger.error(f"Error during session cleanup: {e}")
@@ -84,6 +160,24 @@ async def lifespan(app: FastAPI):
     logger.info("🧹 Auto-cleanup:  Every 5 minutes")
     logger.info("=" * 50)
 
+    # Load .env and initialize shared GROQ client once (to reuse connections)
+    try:
+        ENV_PATH = Path(__file__).resolve().parent / ".env"
+        load_dotenv(dotenv_path=ENV_PATH)
+    except Exception:
+        ENV_PATH = None
+
+    try:
+        groq_key = os.getenv("GROQ_API_KEY", "").strip()
+        if groq_key:
+            from groq import Groq
+            global GROQ_CLIENT, GROQ_MODEL
+            GROQ_CLIENT = Groq(api_key=groq_key)
+            GROQ_MODEL = os.getenv("GROQ_MODEL", GROQ_MODEL)
+            logger.info("Initialized shared GROQ client")
+    except Exception as e:
+        logger.warning(f"Could not initialize GROQ client at startup: {e}")
+
     cleanup_task = asyncio.create_task(cleanup_expired_sessions())
 
     yield
@@ -93,6 +187,13 @@ async def lifespan(app: FastAPI):
     from routers.upload import DATA_CACHE
     DATA_CACHE.clear()
     logger.info("🧹 Cleared data cache")
+    # Also clear report cache to free memory
+    try:
+        from routers.report import REPORT_CACHE
+        REPORT_CACHE.clear()
+        logger.info("🧹 Cleared report cache")
+    except Exception:
+        pass
 
 # ================= APP =================
 app = FastAPI(
@@ -210,21 +311,27 @@ async def root():
 @app.get("/health", tags=["Health"])
 async def health_check():
     from routers.upload import DATA_CACHE
+    # Report persisted session disk usage rather than in-memory DataFrame sizes
+    total_bytes = 0
+    for session in DATA_CACHE.values():
+        try:
+            fp = session.get("file_path")
+            if fp and os.path.exists(fp):
+                total_bytes += os.path.getsize(fp)
+        except Exception:
+            pass
     return {
         "status": "healthy",
         "service": "datapilot-api",
         "version": "1.0.0",
         "cache_size": len(DATA_CACHE),
-        "cache_memory_mb": sum(
-            session["df"].memory_usage(deep=True).sum()
-            for session in DATA_CACHE.values()
-        ) / (1024 * 1024) if DATA_CACHE else 0,
+        "cache_disk_mb": round(total_bytes / (1024 * 1024), 2),
     }
 
 # ================= DATA ENDPOINT =================
 @app.get("/data/{session_id}", tags=["Data"])
 async def get_data(session_id: str, limit: int = 10000, offset: int = 0):
-    from routers.upload import DATA_CACHE
+    from routers.upload import DATA_CACHE, get_session
 
     if session_id not in DATA_CACHE:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -234,7 +341,9 @@ async def get_data(session_id: str, limit: int = 10000, offset: int = 0):
         limit = MAX_LIMIT
         logger.warning(f"Limit capped at {MAX_LIMIT} for session {session_id}")
 
-    df = DATA_CACHE[session_id]["df"]
+    df = get_session(session_id)
+    if df is None:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
     total_rows = len(df)
     subset = df.iloc[offset : offset + limit]
 
@@ -258,6 +367,19 @@ async def delete_session(session_id: str):
         return {"message": "Session not found (already evicted)", "session_id": session_id}
 
     del DATA_CACHE[session_id]
+
+    # Also evict from CLEAN_STORE and CONTEXT_CACHE to free memory
+    try:
+        from routers.clean import CLEAN_STORE
+        CLEAN_STORE.pop(session_id, None)
+    except Exception:
+        pass
+    try:
+        from routers.insights import CONTEXT_CACHE
+        CONTEXT_CACHE.pop(session_id, None)
+    except Exception:
+        pass
+
     logger.info(f"🗑️  Session {session_id} evicted by user request")
     return {"message": "Session evicted", "session_id": session_id}
 
@@ -268,7 +390,7 @@ async def cache_stats():
 
     active_sessions = 0
     expired_sessions = 0
-    total_memory = 0
+    total_bytes = 0
 
     for session_id, session in DATA_CACHE.items():
         expiry_min = session.get("expiry_minutes", EXPIRY_MINUTES)
@@ -276,13 +398,18 @@ async def cache_stats():
             expired_sessions += 1
         else:
             active_sessions += 1
-            total_memory += session["df"].memory_usage(deep=True).sum()
+            try:
+                fp = session.get("file_path")
+                if fp and os.path.exists(fp):
+                    total_bytes += os.path.getsize(fp)
+            except Exception:
+                pass
 
     return {
         "active_sessions": active_sessions,
         "expired_sessions": expired_sessions,
         "total_sessions": len(DATA_CACHE),
-        "total_memory_mb": round(total_memory / (1024 * 1024), 2),
+        "total_disk_mb": round(total_bytes / (1024 * 1024), 2),
         "expiry_minutes": EXPIRY_MINUTES,
     }
 

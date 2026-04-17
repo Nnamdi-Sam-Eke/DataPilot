@@ -12,6 +12,7 @@ import {
   getUserDatasets,
   getUserProjects,
   deleteDataset,
+  saveDataset,
 } from "./services/firestore";
 import { doc, getDoc, serverTimestamp, enableNetwork } from "firebase/firestore";
 import { db } from "./services/firebase";
@@ -412,12 +413,14 @@ export function DataPilotProvider({ children }) {
             return isExpired ? { ...s, expired: true } : s;
           });
 
-          setSessionsRaw(validatedSessions);
+          // Filter out expired sessions so they don't clutter the UI
+          const liveSessions = validatedSessions.filter((s) => !s.expired);
 
-          if (validatedSessions.length > 0) {
-            const firstLiveIdx = validatedSessions.findIndex((s) => !s.expired);
-            const idx = firstLiveIdx !== -1 ? firstLiveIdx : 0;
-            const first = validatedSessions[idx];
+          setSessionsRaw(liveSessions);
+
+          if (liveSessions.length > 0) {
+            const first = liveSessions[0];
+            const idx = 0;
 
             setActiveIdxRaw(idx);
             setSessionIdRaw(first.sessionId);
@@ -439,12 +442,13 @@ export function DataPilotProvider({ children }) {
             } else {
               setPreviewLoadingRaw(true);
               try {
-                const probeResult = validationResults[idx];
+                // Find the original index in validatedSessions to get the correct probe result
+                const origIdx = validatedSessions.findIndex((s) => s.sessionId === first.sessionId);
+                const probeResult = validationResults[origIdx];
                 if (probeResult.status === "fulfilled") {
                   const data = probeResult.value;
                   const previewRows = data.data    || [];
                   const previewCols = data.columns || first.columns || [];
-                  // Only overwrite cleanPreview if the workspace didn't already restore one
                   if (!wsToRestore.cleanPreview) setCleanPreviewRaw(previewRows);
                   updateSessionPreview(idx, { columns: previewCols, rows: previewRows });
                   if (previewCols.length) setColumnsRaw(previewCols);
@@ -478,6 +482,7 @@ export function DataPilotProvider({ children }) {
     return unsubscribe;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  
   // ── Auth actions ──────────────────────────────────────────────────────
   const signup = async (email, password, profile = {}) => {
     const cred = await signUpUser(email, password);
@@ -579,7 +584,7 @@ export function DataPilotProvider({ children }) {
     cleanFillStrategies, cleanRenameMap, cleanCastMap, cleanEncodeMap, cleanPromoted,
   ]);
 
-  const addSession = useCallback(async (newSession) => {
+  const addSession = useCallback(async (newSession, options = {}) => {
     // New uploads always start with a fresh workspace
     const sessionWithWorkspace = { ...newSession, workspace: freshWorkspace() };
 
@@ -634,9 +639,26 @@ export function DataPilotProvider({ children }) {
 
     setPreviewLoadingRaw(true);
     try {
-      const data = await fetchSessionData(sessionWithWorkspace.sessionId);
-      const previewRows = data.data    || [];
-      const previewCols = data.columns || sessionWithWorkspace.columns || [];
+      // Retry fetching the session a few times to handle transient
+      // timing issues where the backend's in-memory cache isn't visible
+      // immediately after create (edge cases with dev servers/processes).
+      const maxAttempts = 5;
+      let attempt = 0;
+      let data = null;
+      while (attempt < maxAttempts) {
+        try {
+          data = await fetchSessionData(sessionWithWorkspace.sessionId);
+          break;
+        } catch (err) {
+          attempt += 1;
+          if (attempt >= maxAttempts) throw err;
+          // If session not found, wait briefly and retry
+          await new Promise((res) => setTimeout(res, 200));
+        }
+      }
+
+      const previewRows = data?.data || [];
+      const previewCols = data?.columns || sessionWithWorkspace.columns || [];
       setCleanPreviewRaw(previewRows);
       setSessionsRaw((prev) =>
         prev.map((sess) =>
@@ -657,6 +679,23 @@ export function DataPilotProvider({ children }) {
     } finally {
       setPreviewLoadingRaw(false);
     }
+
+    // Optionally persist the session to Firestore (used by promotion)
+    if (options?.persist && user?.uid) {
+      try {
+        await saveDataset(user.uid, {
+          fileName: sessionWithWorkspace.fileName,
+          fileSize: sessionWithWorkspace.fileSize || 0,
+          lastModified: sessionWithWorkspace.lastModified || 0,
+          rowCount: sessionWithWorkspace.rowCount || 0,
+          columns: sessionWithWorkspace.columns || [],
+          summary: sessionWithWorkspace.summary || null,
+          sessionId: sessionWithWorkspace.sessionId,
+        }, sessionWithWorkspace.projectId || null);
+      } catch (err) {
+        console.error("Failed to persist promoted session to Firestore:", err);
+      }
+    }
   }, [
     activeIdx, applyWorkspace, saveWorkspaceToSession, markSessionExpired, markOfflineIfFirestoreErr,
     modelId, modelMeta, trainResults, trainedModels, trainConfig, savedPlots,
@@ -664,6 +703,115 @@ export function DataPilotProvider({ children }) {
     reportChecked, chatMessages, cleanPreview, cleanOpLog,
     cleanFillStrategies, cleanRenameMap, cleanCastMap, cleanEncodeMap, cleanPromoted,
   ]);
+
+  // NEW: Promote cleaned data + remove original (Simplified & Fixed)
+  const promoteCleanedSession = useCallback(async (oldSessionId, promoteResponse) => {
+    if (!promoteResponse?.new_session_id) {
+      console.error("Invalid promote response");
+      return;
+    }
+
+    const newSessionId = promoteResponse.new_session_id;
+
+    // 1. Find the original session to replace
+    const originalIdx = sessions.findIndex((s) => s.sessionId === oldSessionId);
+    if (originalIdx === -1) {
+      console.warn("Original session not found in list");
+      return;
+    }
+
+    const originalSession = sessions[originalIdx];
+    const originalDocId = originalSession?.id || null;
+
+    // 2. Replace the original session slot with cleaned version
+    setSessionsRaw((prev) => {
+      const idx = prev.findIndex((s) => s.sessionId === oldSessionId);
+      if (idx === -1) return prev;
+      const found = prev[idx];
+      const cleanedSlot = {
+        ...found,
+        id: found.id,
+        sessionId: newSessionId,
+        fileName: promoteResponse.fileName || (found.fileName ? `${found.fileName.replace(/\.[^.]+$/, "")}_cleaned${(found.fileName.match(/\.[^.]+$/)||[""])[0]}` : `Cleaned_${newSessionId.slice(0,8)}`),
+        rowCount: promoteResponse.row_count || found.rowCount || 0,
+        columns: promoteResponse.columns || found.columns || [],
+        summary: promoteResponse.summary || found.summary || null,
+        preview: null,
+        uploadedAt: new Date().toISOString(),
+        workspace: freshWorkspace(),
+      };
+      const out = [...prev];
+      out[idx] = cleanedSlot;
+      return out;
+    });
+
+    // 3. Set active index and session state to the original slot (now with cleaned data)
+    setActiveIdxRaw(originalIdx);
+    setSessionIdRaw(newSessionId);
+    setFileNameRaw(promoteResponse.fileName || originalSession?.fileName || "Cleaned Dataset");
+    setColumnsRaw(promoteResponse.columns || []);
+    setSummaryRaw(promoteResponse.summary || null);
+    setRowCountRaw(promoteResponse.row_count || 0);
+
+    // 4. Persist to Firestore (delete old doc, save new dataset)
+    if (user?.uid) {
+      try {
+        if (originalDocId) {
+          try {
+            await deleteDataset(user.uid, originalDocId);
+            console.log(`✅ Deleted original Firestore doc ${originalDocId}`);
+          } catch (err) {
+            console.warn(`⚠️ Failed to delete original Firestore doc ${originalDocId}:`, err);
+          }
+        }
+        await saveDataset(user.uid, {
+          fileName: promoteResponse.fileName,
+          fileSize: originalSession?.fileSize || 0,
+          lastModified: originalSession?.lastModified || 0,
+          rowCount: promoteResponse.row_count || 0,
+          columns: promoteResponse.columns || [],
+          summary: promoteResponse.summary || null,
+          sessionId: newSessionId,
+        }, originalSession?.projectId || null);
+        console.log(`✅ Saved promoted session to Firestore: ${newSessionId}`);
+      } catch (err) {
+        console.warn("Failed to persist promoted session to Firestore:", err);
+      }
+    }
+
+    // 5. Fetch preview data for the cleaned session (with retries for transient 404s)
+    try {
+      const maxAttempts = 5;
+      let attempt = 0;
+      let data = null;
+      while (attempt < maxAttempts) {
+        try {
+          data = await fetchSessionData(newSessionId);
+          break;
+        } catch (err) {
+          attempt += 1;
+          if (attempt >= maxAttempts) throw err;
+          // If session not found, wait briefly and retry
+          await new Promise((res) => setTimeout(res, 200));
+        }
+      }
+
+      const previewRows = data?.data || [];
+      const previewCols = data?.columns || promoteResponse.columns || [];
+      setCleanPreviewRaw(previewRows);
+      setSessionsRaw((prev) =>
+        prev.map((sess) =>
+          sess.sessionId === newSessionId
+            ? { ...sess, preview: { columns: previewCols, rows: previewRows } }
+            : sess
+        )
+      );
+    } catch (err) {
+      console.warn("Failed to load preview for promoted session:", err);
+    }
+
+    console.log(`✅ Promoted and replaced ${oldSessionId} → ${newSessionId}`);
+  }, [sessions, user?.uid]);
 
   const removeSession = useCallback(async (idx) => {
     const sessionToRemove = sessions[idx];
@@ -766,6 +914,7 @@ export function DataPilotProvider({ children }) {
       cleanCastMap,        setCleanCastMap:        setCleanCastMapRaw,
       cleanEncodeMap,      setCleanEncodeMap:      setCleanEncodeMapRaw,
       cleanPromoted,       setCleanPromoted:       setCleanPromotedRaw,
+      promoteCleanedSession,
 
       groqKey,       setGroqKey:       setGroqKeyRaw,
       userProfile,   setUserProfile:   setUserProfileRaw,
@@ -802,6 +951,7 @@ export function DataPilotProvider({ children }) {
       markSessionExpired, resetWorkspaceState, removeProjectSessions,
       switchSession, addSession, removeSession,
       isOffline, retryingConnection, retryConnection, setIsOffline,
+      promoteCleanedSession,
     ]
   );
 

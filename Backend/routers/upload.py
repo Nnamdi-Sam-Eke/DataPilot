@@ -12,15 +12,18 @@ import numpy as np
 router = APIRouter()
 
 DATA_CACHE = {}
-EXPIRY_MINUTES = 60
+EXPIRY_MINUTES = 90
 
 PLAN_EXPIRY: Dict[str, int] = {
-    "free": 60,    # 1 hour — keeps memory pressure low on free Render tier
+    "free": 90,    # 1.5 hours — free tier extended
     "pro":  720,   # 12 hours
 }
 
 # Max rows stored in-memory for free plan users
-MAX_ROWS_FREE = 50_000
+MAX_ROWS_FREE = 25_000
+
+# Hard cap on uploaded file size (bytes) — reject before reading into memory
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 # Global user-visible stats (in-memory)
 USER_STATS = {
@@ -48,10 +51,12 @@ READERS = {
     "application/json": pd.read_json,
 }
 
-def create_session(df: pd.DataFrame, plan: str = "free") -> str:
+def create_session(df: pd.DataFrame, plan: str = "free", file_name: str = None) -> str:
+    """Create a new session."""
     session_id = str(uuid.uuid4())
     expiry_minutes = PLAN_EXPIRY.get(plan.lower(), PLAN_EXPIRY["free"])
     now = datetime.utcnow()
+
     DATA_CACHE[session_id] = {
         "df": df,
         "created_at": now,
@@ -59,6 +64,10 @@ def create_session(df: pd.DataFrame, plan: str = "free") -> str:
         "expiry_minutes": expiry_minutes,
         "plan": plan.lower(),
     }
+
+    if file_name:
+        DATA_CACHE[session_id]["file_name"] = file_name
+
     return session_id
 
 def get_session(session_id: str):
@@ -74,8 +83,7 @@ def get_session(session_id: str):
 def generate_summary(df: pd.DataFrame) -> Dict[str, Any]:
     """
     Generate a df.describe()-style summary dict with safe datetime handling.
-    Uses format='mixed' (pandas ≥ 2.0) instead of the deprecated
-    infer_datetime_format=True.
+    Uses format='mixed' (pandas ≥ 2.0) instead of the deprecated infer_datetime_format=True.
     """
     try:
         summary = df.describe(include="all", datetime_is_numeric=True).to_dict()
@@ -85,7 +93,6 @@ def generate_summary(df: pd.DataFrame) -> Dict[str, Any]:
             try:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", UserWarning)
-                    # format='mixed' replaces the deprecated infer_datetime_format
                     converted = pd.to_datetime(df[col], errors="coerce", format="mixed")
                 if converted.notna().sum() > 0:
                     s_min = converted.min()
@@ -143,13 +150,23 @@ async def process_file(file: UploadFile, plan: str = "free") -> Dict[str, Any]:
 
     try:
         content = await file.read()
+
+        if len(content) > MAX_UPLOAD_BYTES:
+            size_mb = len(content) / (1024 * 1024)
+            return sanitize_for_json({
+                "file_name": file.filename,
+                "error": (
+                    f"File too large ({size_mb:.1f} MB). "
+                    f"Maximum allowed size is {MAX_UPLOAD_BYTES // (1024*1024)} MB."
+                ),
+            })
+
         buffer = io.BytesIO(content)
         df = READERS[file.content_type](buffer)
 
         if df.empty:
             return sanitize_for_json({"file_name": file.filename, "error": "File is empty"})
 
-        # Cap row count for free plan to protect server memory
         if plan == "free" and len(df) > MAX_ROWS_FREE:
             df = df.sample(MAX_ROWS_FREE, random_state=42).reset_index(drop=True)
             import logging as _log
@@ -157,8 +174,6 @@ async def process_file(file: UploadFile, plan: str = "free") -> Dict[str, Any]:
                 f"Free plan: dataset sampled to {MAX_ROWS_FREE} rows ({file.filename})"
             )
 
-        # Coerce object columns that look like dates.
-        # format='mixed' handles inconsistent date formats without the deprecation warning.
         for col in df.select_dtypes(include=["object"]).columns:
             try:
                 with warnings.catch_warnings():
@@ -178,10 +193,29 @@ async def process_file(file: UploadFile, plan: str = "free") -> Dict[str, Any]:
     summary = generate_summary(df)
     columns = df.columns.tolist()
     sample_rows = df.head(5).to_dict(orient="records")
-    session_id = create_session(df, plan=plan)
+
+    session_id = create_session(df, plan=plan, file_name=file.filename)
+
+    DATA_CACHE[session_id].update({
+        "columns": columns[:20],
+        "sample": sample_rows[:3],
+        "summary": dict(list(summary.items())[:10]),
+        "row_count": len(df),
+    })
+
+    try:
+        from routers.insights import CONTEXT_CACHE
+        CONTEXT_CACHE[session_id] = (
+            f"Dataset ({session_id[:8]}...):\n"
+            f"{{'shape': {list(df.shape)}, "
+            f"'columns': {columns[:20]}, "
+            f"'sample': {sample_rows[:3]}}}"
+        )
+    except Exception:
+        pass
+
     expiry_minutes = PLAN_EXPIRY.get(plan.lower(), PLAN_EXPIRY["free"])
 
-    # Track row count in memory (the frontend persists this to Firestore via its own SDK)
     row_count = len(df)
     try:
         USER_STATS["total_rows_processed"] += int(row_count)

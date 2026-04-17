@@ -118,6 +118,7 @@ export default function PageCleaning({ setPage }) {
     sessionId, columns, summary, fileName, rowCount,
     setColumns, setSummary, setRowCount,
     sessions, activeIdx, setSessions: setSessionsRaw, addSession,
+    promoteCleanedSession,
     cleanOpLog,          setCleanOpLog,
     cleanFillStrategies, setCleanFillStrategies,
     cleanRenameMap,      setCleanRenameMap,
@@ -229,17 +230,12 @@ export default function PageCleaning({ setPage }) {
       const r = await fetch(`${API_BASE}/clean/${sessionId}/promote`, { method: "POST" });
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail || "Promote failed");
-      addSession({
-        sessionId: d.new_session_id,
-        fileName:  fileName.replace(/\.[^.]+$/, "") + "_cleaned" + (fileName.match(/\.[^.]+$/) || [""])[0],
-        rowCount:  d.row_count,
-        columns:   d.columns,
-        summary:   d.summary,
-        preview:   null,
-      });
+
+      // Call the helper
+      await promoteCleanedSession(sessionId, d);
+
       setPromoted(true);
-      setSuccess("Cleaned data is now the active dataset across all pages.");
-      setTimeout(() => setSuccess(""), 5000);
+      setSuccess("Cleaned data is now the active dataset.");
     } catch (e) {
       setError(e.message);
     } finally {

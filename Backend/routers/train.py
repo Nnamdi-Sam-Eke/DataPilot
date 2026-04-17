@@ -14,6 +14,12 @@ logger = logging.getLogger(__name__)
 # In-memory model store
 MODEL_STORE: Dict[str, Any] = {}
 
+# Hard cap on concurrent models — cleanup loop in main.py enforces this
+MAX_MODELS = 5
+
+# How long a trained model lives in memory before the cleanup loop evicts it
+MODEL_EXPIRY_MINUTES = 60
+
 def sanitize(obj):
     if isinstance(obj, dict):
         return {k: sanitize(v) for k, v in obj.items()}
@@ -87,10 +93,12 @@ async def train_model(payload: Dict):
         if X.shape[1] == 0:
             raise HTTPException(status_code=400, detail="No usable feature columns after removing datetime columns.")
 
-        # Encode categoricals in X
+        # Encode categoricals in X — store fitted encoders for use in predict
+        feature_label_encoders: Dict[str, Any] = {}
         for col in X.select_dtypes(include=["object", "category"]).columns:
             le = LabelEncoder()
             X[col] = le.fit_transform(X[col].astype(str))
+            feature_label_encoders[col] = le
 
         # Ensure all remaining columns are numeric — coerce anything else
         for col in X.columns:
@@ -205,6 +213,7 @@ async def train_model(payload: Dict):
             "model": model,
             "scaler": scaler if use_scaled else None,
             "feature_columns": X.columns.tolist(),
+            "feature_label_encoders": feature_label_encoders,  # fitted per-column encoders
             "target_column": target_column,
             "is_classification": is_classification,
             "label_encoder": le_y,
@@ -213,6 +222,7 @@ async def train_model(payload: Dict):
             "train_size": train_size_val,
             "test_size": test_size_val,
             "created_at": datetime.utcnow(),
+            "expiry_minutes": MODEL_EXPIRY_MINUTES,
         }
 
         logger.info(f"✅ Model trained: {model_type}, model_id={model_id}")

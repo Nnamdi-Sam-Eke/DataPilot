@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Icons } from "../shared/icons.jsx";
 import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";
 import ApiFallback from "../components/ApiFallback.jsx";
@@ -180,7 +180,7 @@ function MiniBar({ val, max, color }) {
 }
 
 // Full result panel for a single model
-function ModelResultPanel({ result, isActive, onSetActive }) {
+function ModelResultPanel({ result, isActive, onSetActive, showDownloadTip }) {
   const metrics = result?.metrics || {};
   const isClass = result?.task === "classification";
   const color = MODEL_COLORS[result?.model_type] || "var(--accent2)";
@@ -196,8 +196,16 @@ function ModelResultPanel({ result, isActive, onSetActive }) {
         </div>
         <span className="tag tag-cyan">{result?.task}</span>
         {isActive
-          ? <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent2)", background: "var(--accent-dim)", border: "1px solid rgba(108,99,255,0.3)", borderRadius: 5, padding: "2px 7px" }}>Active for Predictions</span>
-          : (
+          ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent2)", background: "var(--accent-dim)", border: "1px solid rgba(108,99,255,0.3)", borderRadius: 5, padding: "2px 7px" }}>Active for Predictions</span>
+              <span style={{
+                fontSize: 10,
+                color: "var(--amber)",
+                fontFamily: "'DM Mono', monospace"
+              }}>Temporary session model (auto-clears)</span>
+            </div>
+          ) : (
             <button
               onClick={() => onSetActive(result)}
               style={{ fontSize: 11, padding: "3px 10px", borderRadius: 6, border: "1px solid var(--border2)", background: "var(--bg3)", color: "var(--text2)", cursor: "pointer", fontWeight: 500, transition: "all 0.15s" }}
@@ -237,6 +245,23 @@ function ModelResultPanel({ result, isActive, onSetActive }) {
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
         Download .pkl
       </a>
+
+      {/* Temporary storage warning */}
+      <div style={{
+        fontSize: 11,
+        color: "var(--text3)",
+        marginTop: 8,
+        textAlign: "center"
+      }}>
+        ⚠️ This model will be available for 60 minutes. Download it to keep it permanently.
+      </div>
+
+      {/* Tip shown briefly after training completes */}
+      {showDownloadTip && (
+        <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 8, textAlign: "center" }}>
+          💡 Tip: Download your model to keep it permanently.
+        </div>
+      )}
     </div>
   );
 }
@@ -257,6 +282,8 @@ export default function PageTrain({ setPage }) {
   const [error, setError] = useState("");
   // Which result to show in the detail panel (defaults to most recent)
   const [detailModelId, setDetailModelId] = useState(null);
+  const [showDownloadTip, setShowDownloadTip] = useState(false);
+  const tipTimerRef = useRef(null);
 
   const selectedModel = trainConfig.selectedModel;
   const targetCol     = trainConfig.targetCol;
@@ -313,12 +340,22 @@ export default function PageTrain({ setPage }) {
       setTrainResults(entry);
       setDetailModelId(data.model_id);
 
+      // Show a brief tip after training completes to encourage downloading
+      setShowDownloadTip(true);
+      if (tipTimerRef.current) clearTimeout(tipTimerRef.current);
+      tipTimerRef.current = setTimeout(() => setShowDownloadTip(false), 8000);
+
     } catch (e) {
       setError(e.message || "Training failed");
     } finally {
       setTraining(false);
     }
   };
+
+  // clean up timer on unmount
+  useEffect(() => {
+    return () => { if (tipTimerRef.current) clearTimeout(tipTimerRef.current); };
+  }, []);
 
   // ── Set active model for predictions ───────────────────────────────────
   const handleSetActive = (m) => {
@@ -502,6 +539,7 @@ export default function PageTrain({ setPage }) {
                 result={displayResult}
                 isActive={displayResult.model_id === modelId}
                 onSetActive={handleSetActive}
+                showDownloadTip={showDownloadTip}
               />
 
               {/* Feature importance */}

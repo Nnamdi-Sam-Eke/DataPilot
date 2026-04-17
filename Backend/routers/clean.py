@@ -3,6 +3,9 @@ routers/clean.py
 Handles all data-cleaning operations against an in-memory session DataFrame.
 Each operation mutates a per-session copy stored in CLEAN_STORE, keeping the
 original DATA_CACHE intact so the user can always undo back to square one.
+
+Memory design: undo history is stored as Parquet bytes (not live DataFrames),
+which is 5-10x smaller. Cap is 5 snapshots to bound worst-case RAM usage.
 """
 
 from fastapi import APIRouter, HTTPException
@@ -13,8 +16,11 @@ import pandas as pd
 import numpy as np
 import io
 import copy
+import logging
 
 router = APIRouter(prefix="/clean", tags=["clean"])
+
+logger = logging.getLogger(__name__)
 
 # ── shared state ─────────────────────────────────────────────────────────────
 # Imported lazily to avoid circular imports
@@ -22,8 +28,25 @@ def _get_data_cache():
     from routers.upload import DATA_CACHE
     return DATA_CACHE
 
-# Per-session cleaning state:  session_id → { "history": [df0, df1, …], "current": df }
+# Per-session cleaning state:
+#   session_id → { "history": [parquet_bytes, …], "current": df }
+# History entries are Parquet-serialised bytes to minimise RAM footprint.
 CLEAN_STORE: dict = {}
+
+# Max undo steps kept per session — kept low to bound memory usage
+_MAX_UNDO = 5
+
+
+def _df_to_bytes(df: pd.DataFrame) -> bytes:
+    """Serialise a DataFrame to Parquet bytes (compact, fast)."""
+    buf = io.BytesIO()
+    df.to_parquet(buf, index=True, engine="pyarrow")
+    return buf.getvalue()
+
+
+def _bytes_to_df(data: bytes) -> pd.DataFrame:
+    """Deserialise Parquet bytes back to a DataFrame."""
+    return pd.read_parquet(io.BytesIO(data))
 
 
 def _get_or_init(session_id: str) -> pd.DataFrame:
@@ -37,18 +60,28 @@ def _get_or_init(session_id: str) -> pd.DataFrame:
             raise HTTPException(status_code=404, detail="Session not found. Please re-upload the file.")
         original_df: pd.DataFrame = cache[session_id]["df"]
         CLEAN_STORE[session_id] = {
-            "history": [],          # list of DataFrames (undo stack)
+            "history": [],          # list of Parquet bytes (undo stack)
             "current": original_df.copy(),
         }
     return CLEAN_STORE[session_id]["current"]
 
 
 def _save_snapshot(session_id: str, df: pd.DataFrame):
-    """Push current state onto undo stack, then set new current."""
+    """
+    Push current state onto undo stack as Parquet bytes, then set new current.
+    Capped at _MAX_UNDO entries — oldest snapshot dropped when exceeded.
+    """
     entry = CLEAN_STORE[session_id]
-    entry["history"].append(entry["current"].copy())
-    if len(entry["history"]) > 20:          # cap undo stack at 20
-        entry["history"].pop(0)
+    try:
+        snapshot_bytes = _df_to_bytes(entry["current"])
+    except Exception:
+        # Parquet serialisation failed (e.g. mixed types) — skip this snapshot
+        snapshot_bytes = None
+
+    if snapshot_bytes is not None:
+        entry["history"].append(snapshot_bytes)
+        if len(entry["history"]) > _MAX_UNDO:
+            entry["history"].pop(0)
     entry["current"] = df
 
 
@@ -129,65 +162,117 @@ def fill_missing(session_id: str, body: FillMissingBody):
     if body.column not in df.columns:
         raise HTTPException(status_code=400, detail=f"Column '{body.column}' not found.")
 
-    col = df[body.column]
-    strategy = body.strategy
+    col_name = body.column
+    requested_strategy = body.strategy
+    original_missing = int(df[col_name].isna().sum())
 
-    if strategy == "mean":
-        val = col.mean()
-        df[body.column] = col.fillna(val)
-    elif strategy == "median":
-        val = col.median()
-        df[body.column] = col.fillna(val)
-    elif strategy == "mode":
-        val = col.mode()
-        df[body.column] = col.fillna(val[0] if len(val) else 0)
-    elif strategy == "zero":
-        df[body.column] = col.fillna(0 if pd.api.types.is_numeric_dtype(col) else "")
-    elif strategy == "ffill":
-        df[body.column] = col.ffill()
-    elif strategy == "bfill":
-        df[body.column] = col.bfill()
-    elif strategy == "drop":
-        df = df.dropna(subset=[body.column])
+    if original_missing == 0:
+        return {
+            "message": f"Column '{col_name}' has no missing values.",
+            "filled_count": 0,
+            "used_strategy": requested_strategy
+        }
+
+    strategy = requested_strategy
+
+    if requested_strategy in ("mean", "median"):
+        col = df[col_name]
+        if pd.api.types.is_numeric_dtype(col) and col.notna().any():
+            fill_value = col.mean() if requested_strategy == "mean" else col.median()
+            df[col_name] = col.fillna(fill_value)
+        else:
+            # Fallback for CouponCode-style alphanumeric columns
+            mode_val = col.mode(dropna=True)
+            fill_value = mode_val.iloc[0] if not mode_val.empty else ""
+            df[col_name] = col.fillna(fill_value)
+            strategy = f"{requested_strategy} (fallback to mode)"
+
+    elif requested_strategy == "mode":
+        col = df[col_name]
+        mode_val = col.mode(dropna=True)
+        fill_value = mode_val.iloc[0] if not mode_val.empty else ""
+        df[col_name] = col.fillna(fill_value)
+        strategy = "mode"
+
+    elif requested_strategy == "zero":
+        col = df[col_name]
+        fill_value = 0 if pd.api.types.is_numeric_dtype(col) else ""
+        df[col_name] = col.fillna(fill_value)
+
+    elif requested_strategy == "ffill":
+        df[col_name] = df[col_name].ffill()
+    elif requested_strategy == "bfill":
+        df[col_name] = df[col_name].bfill()
+    elif requested_strategy == "drop":
+        df = df.dropna(subset=[col_name])
     else:
-        raise HTTPException(status_code=400, detail=f"Unknown strategy: {strategy}")
+        raise HTTPException(status_code=400, detail=f"Unknown strategy: {requested_strategy}")
 
     _save_snapshot(session_id, df)
-    filled = int(col.isna().sum())
-    return {"message": f"Filled {filled} missing values in '{body.column}' using {strategy}."}
+
+    return {
+        "message": f"Filled {original_missing} missing values in '{col_name}' using {strategy}.",
+        "filled_count": original_missing,
+        "used_strategy": strategy
+    }
 
 
 @router.post("/{session_id}/fill_all_missing")
 def fill_all_missing(session_id: str, body: FillAllMissingBody):
     df = _get_or_init(session_id).copy()
     total_filled = 0
+    applied = {}
 
-    for col_name, strategy in body.strategies.items():
+    for col_name, requested_strategy in body.strategies.items():
         if col_name not in df.columns:
             continue
-        col = df[col_name]
+
+        col = df[col_name]                    # ← Fresh reference every time
         n_missing = int(col.isna().sum())
         if n_missing == 0:
             continue
-        if strategy == "mean":
-            df[col_name] = col.fillna(col.mean())
-        elif strategy == "median":
-            df[col_name] = col.fillna(col.median())
-        elif strategy == "mode":
-            m = col.mode()
-            df[col_name] = col.fillna(m[0] if len(m) else 0)
-        elif strategy == "zero":
-            df[col_name] = col.fillna(0 if pd.api.types.is_numeric_dtype(col) else "")
-        elif strategy == "ffill":
-            df[col_name] = col.ffill()
-        elif strategy == "bfill":
-            df[col_name] = col.bfill()
-        elif strategy == "drop":
+
+        strategy = requested_strategy
+
+        if requested_strategy in ("mean", "median"):
+            if pd.api.types.is_numeric_dtype(col) and col.notna().any():
+                fill_value = col.mean() if requested_strategy == "mean" else col.median()
+                df[col_name] = col.fillna(fill_value)
+            else:
+                # Smart fallback for alphanumeric columns like CouponCode
+                mode_val = col.mode(dropna=True)
+                fill_value = mode_val.iloc[0] if not mode_val.empty else ""
+                df[col_name] = col.fillna(fill_value)
+                strategy = "mode (auto-fallback)"
+
+        elif requested_strategy == "mode":
+            mode_val = col.mode(dropna=True)
+            fill_value = mode_val.iloc[0] if not mode_val.empty else ""
+            df[col_name] = col.fillna(fill_value)
+
+        elif requested_strategy == "zero":
+            fill_value = 0 if pd.api.types.is_numeric_dtype(col) else ""
+            df[col_name] = col.fillna(fill_value)
+
+        elif requested_strategy == "ffill":
+            df[col_name] = df[col_name].ffill()
+        elif requested_strategy == "bfill":
+            df[col_name] = df[col_name].bfill()
+        elif requested_strategy == "drop":
             df = df.dropna(subset=[col_name])
+        else:
+            continue
+
         total_filled += n_missing
+        applied[col_name] = strategy
 
     _save_snapshot(session_id, df)
-    return {"message": f"Filled {total_filled} missing values across {len(body.strategies)} columns."}
+
+    return {
+        "message": f"Successfully filled {total_filled} missing values across {len(applied)} columns.",
+        "total_filled": total_filled,
+        "applied_strategies": applied
+    }
 
 
 @router.post("/{session_id}/drop_column")
@@ -300,7 +385,11 @@ def undo(session_id: str):
     entry = CLEAN_STORE[session_id]
     if not entry["history"]:
         raise HTTPException(status_code=400, detail="Nothing to undo.")
-    entry["current"] = entry["history"].pop()
+    snapshot_bytes = entry["history"].pop()
+    try:
+        entry["current"] = _bytes_to_df(snapshot_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Undo failed: could not restore snapshot ({e})")
     return {"message": "Last operation undone."}
 
 
@@ -308,19 +397,65 @@ def undo(session_id: str):
 @router.post("/{session_id}/promote")
 def promote_to_active(session_id: str):
     """
-    Register the cleaned DataFrame as a brand-new session in DATA_CACHE
-    so all other pages (Overview, Train, Insights, Viz, Report) can use it.
-    Returns the new session_id to the frontend, which then switches context.
+    Promote the cleaned DataFrame as a brand-new session and
+    completely remove the original uncleaned session.
+    This prevents duplicate files in the upload list.
     """
     from routers.upload import DATA_CACHE, create_session
+
+    # Get the cleaned dataframe
     df = _get_or_init(session_id)
-    new_session_id = create_session(df.copy())
+
+    # Try to preserve a friendly filename from the original session if available
+    orig_meta = DATA_CACHE.get(session_id, {})
+    orig_file = orig_meta.get("file_name") or orig_meta.get("fileName")
+    cleaned_file_name = None
+    if orig_file:
+        # Append _cleaned before extension if present
+        parts = orig_file.rsplit(".", 1)
+        if len(parts) == 2:
+            cleaned_file_name = f"{parts[0]}_cleaned.{parts[1]}"
+        else:
+            cleaned_file_name = f"{orig_file}_cleaned"
+
+    # 1. Create the new cleaned session; pass cleaned filename so it's discoverable
+    new_session_id = create_session(df.copy(), file_name=cleaned_file_name)
+
+    # 2. Delete the original uncleaned session completely
+    if session_id in DATA_CACHE:
+        del DATA_CACHE[session_id]
+
+    # Also clean up auxiliary caches
+    try:
+        CLEAN_STORE.pop(session_id, None)
+    except Exception:
+        pass
+
+    try:
+        from routers.insights import CONTEXT_CACHE
+        CONTEXT_CACHE.pop(session_id, None)
+    except Exception:
+        pass
+
+    try:
+        from routers.report import REPORT_CACHE
+        REPORT_CACHE.pop(session_id, None)
+    except Exception:
+        pass
+
+    logger.info(
+        f"✅ Promoted cleaned session {new_session_id[:8]}... "
+        f"and removed original uncleaned session {session_id[:8]}..."
+    )
+
     return {
         "new_session_id": new_session_id,
-        "columns":        list(df.columns),
-        "row_count":      len(df),
-        "summary":        _summary_for(df),
-        "message":        f"Cleaned data promoted — new session {new_session_id[:8]}…",
+        "columns": list(df.columns),
+        "row_count": len(df),
+        "summary": _summary_for(df),
+        "fileName": cleaned_file_name or f"Cleaned_{new_session_id[:8]}",
+        "message": f"Cleaned data is now active. Original dataset was removed.",
+        "original_removed": True
     }
 
 

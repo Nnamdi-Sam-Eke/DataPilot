@@ -1,6 +1,8 @@
 from fastapi import APIRouter
 import pandas as pd
-from utils.plot_utils import df_to_base64_plot
+import json
+import hashlib
+from utils.plot_utils import df_to_base64_plot, get_from_cache, save_to_cache
 
 router = APIRouter()
 
@@ -222,27 +224,46 @@ async def generate_plot(payload: dict):
                     continue
 
             # ===== GENERATE PLOT =====
-            
-            # Extract customizations with snake_case keys (matching frontend mapCustomizationsForBackend)
-            img_b64 = df_to_base64_plot(
-                df=df if not compare_mode else None,
-                dfs=dfs if compare_mode else None,
-                names=names if compare_mode else None,
-                session_id=session_id,
-                plot_type=plot_type,
-                x=x,
-                y=y,
-                hue=hue,
-                title=title,
-                color_scheme=custom.get("color_scheme", "deep"),
-                grid=custom.get("grid", True),
-                legend=custom.get("legend", True),
-                bins=custom.get("bins", 30),
-                window=custom.get("window", 5),
-                lag=custom.get("lag", 1),
-                cluster=custom.get("cluster", False),
-                show_pvalues=custom.get("show_pvalues", False)
-            )
+            # Build a canonical plot configuration and check per-session cache first
+            plot_config = {
+                "type": plot_type,
+                "x": x,
+                "y": y,
+                "hue": hue,
+                "title": title,
+                "custom": custom,
+                "compare_mode": compare_mode,
+                "compare_names": names,
+            }
+            cfg_json = json.dumps(plot_config, sort_keys=True, default=str)
+            cfg_hash = hashlib.md5(cfg_json.encode()).hexdigest()
+            cache_key = f"{session_id or 'anon'}:{cfg_hash}"
+
+            img_b64 = get_from_cache(cache_key)
+            if not img_b64:
+                img_b64 = df_to_base64_plot(
+                    df=df if not compare_mode else None,
+                    dfs=dfs if compare_mode else None,
+                    names=names if compare_mode else None,
+                    session_id=session_id,
+                    plot_type=plot_type,
+                    x=x,
+                    y=y,
+                    hue=hue,
+                    title=title,
+                    color_scheme=custom.get("color_scheme", "deep"),
+                    grid=custom.get("grid", True),
+                    legend=custom.get("legend", True),
+                    bins=custom.get("bins", 30),
+                    window=custom.get("window", 5),
+                    lag=custom.get("lag", 1),
+                    cluster=custom.get("cluster", False),
+                    show_pvalues=custom.get("show_pvalues", False)
+                )
+                try:
+                    save_to_cache(cache_key, img_b64)
+                except Exception:
+                    pass
 
             results.append({
                 "type": plot_type,

@@ -15,11 +15,37 @@ load_dotenv(dotenv_path=_ENV_PATH)
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# Cache for expensive per-session computations (describe + corr).
+# Keyed by session_id — invalidated when the session is evicted.
+# Structure: { session_id: { "stats": {...}, "corr_matrix": {...}, "top_corrs": [...] } }
+REPORT_CACHE: Dict[str, Dict] = {}
+
 
 def _get_server_groq_key() -> str:
     """Return the server-side GROQ_API_KEY from env, stripped of whitespace."""
     val = os.getenv("GROQ_API_KEY", "")
     return val.strip() if val else ""
+
+
+def _get_groq_client():
+    """
+    Return the shared Groq client initialised in main.py (preferred) or
+    fall back to creating one inline.  Avoids duplicate HTTP connection pools.
+    """
+    try:
+        from main import GROQ_CLIENT
+        if GROQ_CLIENT is not None:
+            return GROQ_CLIENT
+    except Exception:
+        pass
+    key = _get_server_groq_key()
+    if not key:
+        return None
+    try:
+        from groq import Groq
+        return Groq(api_key=key)
+    except Exception:
+        return None
 
 
 def sanitize(obj):
@@ -60,13 +86,15 @@ async def generate_ai_narrative(
     """
     Call Groq to generate a professional analyst narrative for the report header.
     Returns an empty string gracefully if the call fails or no key is provided.
+    Uses the shared Groq client from main.py where available.
     """
     if not groq_key:
         return ""
 
     try:
-        from groq import Groq
-        client = Groq(api_key=groq_key)
+        client = _get_groq_client()
+        if client is None:
+            return ""
 
         # Build a compact context string for the prompt
         corr_summary = ""
@@ -170,6 +198,24 @@ async def generate_report(payload: Dict):
         missing_pct          = round(total_missing / (n_rows * n_cols) * 100, 2) if n_rows * n_cols > 0 else 0
         duplicates           = int(df.duplicated().sum())
 
+        # Check REPORT_CACHE to avoid recomputing expensive describe()/corr()
+        cache_entry = REPORT_CACHE.get(session_id)
+        use_cache = False
+        cached_stats = None
+        cached_corr_matrix = None
+        cached_top_corrs = None
+        cached_numeric_cols = None
+        if cache_entry:
+            try:
+                if cache_entry.get("n_rows") == n_rows and cache_entry.get("n_cols") == n_cols:
+                    use_cache = True
+                    cached_stats = cache_entry.get("stats")
+                    cached_corr_matrix = cache_entry.get("corr_matrix")
+                    cached_top_corrs = cache_entry.get("top_corrs")
+                    cached_numeric_cols = cache_entry.get("numeric_cols")
+            except Exception:
+                use_cache = False
+
         # ── Executive Summary ─────────────────────────────────────────────
         if "executive_summary" in sections:
             report["sections"]["executive_summary"] = {
@@ -209,40 +255,52 @@ async def generate_report(payload: Dict):
 
         # ── Statistics ────────────────────────────────────────────────────
         if "statistics" in sections and numeric_cols:
-            stats = {}
-            desc  = df[numeric_cols].describe()
-            for col in numeric_cols:
-                col_stats = desc[col].to_dict()
-                col_stats = {
-                    k: (None if (isinstance(v, float) and (np.isnan(v) or np.isinf(v))) else v)
-                    for k, v in col_stats.items()
-                }
-                stats[col] = col_stats
-            report["sections"]["statistics"] = stats
+            if use_cache and cached_stats is not None:
+                report["sections"]["statistics"] = cached_stats
+            else:
+                stats = {}
+                desc  = df[numeric_cols].describe()
+                for col in numeric_cols:
+                    col_stats = desc[col].to_dict()
+                    col_stats = {
+                        k: (None if (isinstance(v, float) and (np.isnan(v) or np.isinf(v))) else v)
+                        for k, v in col_stats.items()
+                    }
+                    stats[col] = col_stats
+                report["sections"]["statistics"] = stats
 
         # ── Correlations ──────────────────────────────────────────────────
         top_corrs = []
         corr      = None
         if "correlations" in sections and len(numeric_cols) >= 2:
-            corr = df[numeric_cols].corr()
+            if use_cache and cached_corr_matrix is not None and cached_top_corrs is not None:
+                # reuse previously computed correlation matrix and top correlations
+                top_corrs = cached_top_corrs
+                corr_matrix = cached_corr_matrix
+                corr = None
+                # ensure numeric_cols reflects cached value (for AI narrative)
+                if cached_numeric_cols:
+                    numeric_cols = cached_numeric_cols
+            else:
+                corr = df[numeric_cols].corr()
 
-            for i in range(len(numeric_cols)):
-                for j in range(i + 1, len(numeric_cols)):
-                    val = corr.iloc[i, j]
-                    if not np.isnan(val):
-                        top_corrs.append({
-                            "col_a":       numeric_cols[i],
-                            "col_b":       numeric_cols[j],
-                            "correlation": round(float(val), 4),
-                        })
-            top_corrs.sort(key=lambda x: abs(x["correlation"]), reverse=True)
+                for i in range(len(numeric_cols)):
+                    for j in range(i + 1, len(numeric_cols)):
+                        val = corr.iloc[i, j]
+                        if not np.isnan(val):
+                            top_corrs.append({
+                                "col_a":       numeric_cols[i],
+                                "col_b":       numeric_cols[j],
+                                "correlation": round(float(val), 4),
+                            })
+                top_corrs.sort(key=lambda x: abs(x["correlation"]), reverse=True)
 
-            corr_matrix = {}
-            for i, col in enumerate(numeric_cols):
-                corr_matrix[col] = {}
-                for j, other in enumerate(numeric_cols):
-                    val = corr.iloc[i, j]
-                    corr_matrix[col][other] = None if np.isnan(val) else round(float(val), 4)
+                corr_matrix = {}
+                for i, col in enumerate(numeric_cols):
+                    corr_matrix[col] = {}
+                    for j, other in enumerate(numeric_cols):
+                        val = corr.iloc[i, j]
+                        corr_matrix[col][other] = None if np.isnan(val) else round(float(val), 4)
 
             report["sections"]["correlations"] = {
                 "top_correlations": top_corrs[:15],
@@ -344,6 +402,21 @@ async def generate_report(payload: Dict):
             )
 
         logger.info(f"✅ Report generated for session {session_id}")
+
+        # Persist expensive computations for subsequent requests
+        try:
+            REPORT_CACHE[session_id] = {
+                "n_rows": n_rows,
+                "n_cols": n_cols,
+                "stats": report["sections"].get("statistics"),
+                "corr_matrix": report["sections"].get("correlations", {}).get("matrix"),
+                "top_corrs": report["sections"].get("correlations", {}).get("top_correlations"),
+                "numeric_cols": numeric_cols,
+                "stored_at": datetime.utcnow().isoformat(),
+            }
+        except Exception:
+            pass
+
         return sanitize(report)
 
     except HTTPException:
