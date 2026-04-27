@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 MODEL_STORE: Dict[str, Any] = {}
 
 # Hard cap on concurrent models — cleanup loop in main.py enforces this
-MAX_MODELS = 5
+MAX_MODELS = 4
 
 # How long a trained model lives in memory before the cleanup loop evicts it
-MODEL_EXPIRY_MINUTES = 60
+MODEL_EXPIRY_MINUTES = 20
 
 def sanitize(obj):
     if isinstance(obj, dict):
@@ -128,25 +128,39 @@ async def train_model(payload: Dict):
         X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
 
-        # Select model
-        MODEL_MAP = {
-            "rf":  RandomForestClassifier(n_estimators=100, random_state=42) if is_classification else RandomForestRegressor(n_estimators=100, random_state=42),
-            "lr":  LogisticRegression(max_iter=500, random_state=42) if is_classification else LinearRegression(),
-            "svm": SVC(probability=True, random_state=42) if is_classification else SVR(),
-        }
-
-        # XGBoost (optional dependency)
-        try:
-            from xgboost import XGBClassifier, XGBRegressor
-            MODEL_MAP["xgb"] = XGBClassifier(n_estimators=100, random_state=42, eval_metric="logloss") if is_classification else XGBRegressor(n_estimators=100, random_state=42)
-        except ImportError:
-            if model_type == "xgb":
-                raise HTTPException(status_code=400, detail="XGBoost not installed. Run: pip install xgboost")
-
-        if model_type not in MODEL_MAP:
+        # Select and instantiate only the requested model — lazy, no unused objects
+        VALID_TYPES = {"rf", "lr", "svm", "xgb"}
+        if model_type not in VALID_TYPES:
             raise HTTPException(status_code=400, detail=f"Unknown model type: {model_type}")
 
-        model = MODEL_MAP[model_type]
+        if model_type == "rf":
+            model = (
+                RandomForestClassifier(n_estimators=50, random_state=42)
+                if is_classification else
+                RandomForestRegressor(n_estimators=100, random_state=42)
+            )
+        elif model_type == "lr":
+            model = (
+                LogisticRegression(max_iter=500, random_state=42)
+                if is_classification else
+                LinearRegression()
+            )
+        elif model_type == "svm":
+            model = (
+                SVC(probability=True, random_state=42)
+                if is_classification else
+                SVR()
+            )
+        elif model_type == "xgb":
+            try:
+                from xgboost import XGBClassifier, XGBRegressor
+                model = (
+                    XGBClassifier(n_estimators=50, random_state=42, eval_metric="logloss")
+                    if is_classification else
+                    XGBRegressor(n_estimators=100, random_state=42)
+                )
+            except ImportError:
+                raise HTTPException(status_code=400, detail="XGBoost not installed. Run: pip install xgboost")
         use_scaled = model_type in ["lr", "svm"]
         Xtr = X_train_scaled if use_scaled else X_train
         Xte = X_test_scaled if use_scaled else X_test

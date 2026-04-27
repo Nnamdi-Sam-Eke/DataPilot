@@ -154,6 +154,14 @@ def df_to_base64_plot(
 
             elif plot_type == "density":
                 if not x or x not in df.columns: raise ValueError(f"Column '{x}' not found")
+                # FIX: kdeplot requires numeric data. Categorical columns cause:
+                # "The x variable is categorical, but one of ['numeric','datetime'] is required"
+                if not pd.api.types.is_numeric_dtype(df[x]):
+                    raise ValueError(
+                        f"Density plot requires a numeric column. "
+                        f"'{x}' is {df[x].dtype}. "
+                        f"Use a Count or Bar chart for categorical data."
+                    )
                 if hue and hue in df.columns:
                     for cat in df[hue].unique():
                         sns.kdeplot(data=df[df[hue]==cat], x=x, fill=True,
@@ -178,7 +186,12 @@ def df_to_base64_plot(
                 if not x or x not in df.columns: raise ValueError(f"Column '{x}' not found")
                 plt.close("all")
                 fig, ax = plt.subplots(figsize=(9, 7))
-                pie_data = df.groupby(x)[y].sum() if (y and y in df.columns) else df[x].value_counts()
+                # FIX: only use groupby+sum when y is numeric.
+                # If y is a string/object column, .sum() concatenates the strings
+                # producing an object-dtype Series that nlargest() and matplotlib
+                # both choke on. Fall back to value_counts of x in that case.
+                y_is_numeric = y and y in df.columns and pd.api.types.is_numeric_dtype(df[y])
+                pie_data = df.groupby(x)[y].sum() if y_is_numeric else df[x].value_counts()
                 if len(pie_data) > 12: pie_data = pie_data.nlargest(12)
                 colors = sns.color_palette(palette, len(pie_data))
                 wedges, texts, autotexts = ax.pie(
@@ -192,7 +205,9 @@ def df_to_base64_plot(
                 if not x or x not in df.columns: raise ValueError(f"Column '{x}' not found")
                 plt.close("all")
                 fig, ax = plt.subplots(figsize=(9, 7))
-                pie_data = df.groupby(x)[y].sum() if (y and y in df.columns) else df[x].value_counts()
+                # FIX: same as pie — only groupby+sum when y is actually numeric.
+                y_is_numeric = y and y in df.columns and pd.api.types.is_numeric_dtype(df[y])
+                pie_data = df.groupby(x)[y].sum() if y_is_numeric else df[x].value_counts()
                 if len(pie_data) > 12: pie_data = pie_data.nlargest(12)
                 colors = sns.color_palette(palette, len(pie_data))
                 ax.pie(pie_data.values, labels=pie_data.index, autopct='%1.1f%%',

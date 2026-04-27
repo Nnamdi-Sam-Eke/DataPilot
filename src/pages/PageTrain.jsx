@@ -253,7 +253,7 @@ function ModelResultPanel({ result, isActive, onSetActive, showDownloadTip }) {
         marginTop: 8,
         textAlign: "center"
       }}>
-        ⚠️ This model will be available for 60 minutes. Download it to keep it permanently.
+        ⚠️ This model will be available for 20 minutes. Download it to keep it permanently.
       </div>
 
       {/* Tip shown briefly after training completes */}

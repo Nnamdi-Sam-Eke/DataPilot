@@ -16,17 +16,44 @@ function NextStepBar({ label, to, setPage, note }) {
 
 export default function PagePredictions({ setPage }) {
   const {
-    modelId, modelMeta, sessionId,
+    modelId, modelMeta, sessionId, fileName: sessionFileName,
     predictionResults:  results,   setPredictionResults:  setResults,
     predictionFileName: fileName,  setPredictionFileName: setFileName,
     activeSessionExpired,
     trainedModels, setModelId, setModelMeta, setTrainResults,
   } = useDataPilot();
 
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState("");
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState("");
+  const [scoreMode, setScoreMode] = useState("session"); // "session" | "file"
   const fileInputRef = useRef(null);
 
+  // ── Score the already-loaded session dataset ──────────────────────────────
+  const handleScoreSession = async () => {
+    if (!modelId || !sessionId) return;
+    setLoading(true);
+    setError("");
+    setResults(null);
+    setFileName(sessionFileName || "Current Dataset");
+
+    try {
+      const res = await fetch(`${API_BASE}/predict/session/`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ model_id: modelId, session_id: sessionId }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Prediction failed");
+      setResults(data);
+    } catch (e) {
+      setError(e.message || "Prediction failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Score a freshly uploaded file ─────────────────────────────────────────
   const handleFile = async (file) => {
     if (!file || !modelId) return;
     setLoading(true);
@@ -40,7 +67,7 @@ export default function PagePredictions({ setPage }) {
 
       const res = await fetch(`${API_BASE}/predict/?model_id=${modelId}`, {
         method: "POST",
-        body: formData,
+        body:   formData,
       });
 
       const data = await res.json();
@@ -56,12 +83,12 @@ export default function PagePredictions({ setPage }) {
   const downloadCSV = () => {
     if (!results?.predictions) return;
     const headers = Object.keys(results.predictions[0]).join(",");
-    const rows = results.predictions.map(r => Object.values(r).join(",")).join("\n");
-    const blob = new Blob([headers + "\n" + rows], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "predictions.csv";
+    const rows    = results.predictions.map(r => Object.values(r).join(",")).join("\n");
+    const blob    = new Blob([headers + "\n" + rows], { type: "text/csv" });
+    const url     = URL.createObjectURL(blob);
+    const a       = document.createElement("a");
+    a.href        = url;
+    a.download    = "predictions.csv";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -79,6 +106,8 @@ export default function PagePredictions({ setPage }) {
 
   const isClassification = modelMeta?.task === "classification";
 
+  // ── Guards ────────────────────────────────────────────────────────────────
+
   if (!sessionId || activeSessionExpired) {
     return (
       <div className="page-enter">
@@ -87,8 +116,14 @@ export default function PagePredictions({ setPage }) {
           <div style={{ width: 56, height: 56, borderRadius: 14, background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           </div>
-          <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text)", marginBottom: 6 }}>{activeSessionExpired ? "Session Expired" : "No Dataset Loaded"}</div>
-          <div style={{ fontSize: 12, color: "var(--text3)" }}>{activeSessionExpired ? "This dataset is no longer active on the server. Go to Upload Data and re-upload the file to continue." : "Upload a dataset and train a model first."}</div>
+          <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text)", marginBottom: 6 }}>
+            {activeSessionExpired ? "Session Expired" : "No Dataset Loaded"}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text3)" }}>
+            {activeSessionExpired
+              ? "This dataset is no longer active on the server. Go to Upload Data and re-upload the file to continue."
+              : "Upload a dataset and train a model first."}
+          </div>
         </div>
       </div>
     );
@@ -99,7 +134,7 @@ export default function PagePredictions({ setPage }) {
       <div className="page-enter">
         <div className="page-header">
           <div className="page-title">Predictions</div>
-          <div className="page-subtitle">Score new data using your trained model</div>
+          <div className="page-subtitle">Score data using your trained model</div>
         </div>
         <div className="card" style={{ textAlign: "center", padding: "60px 20px" }}>
           <div style={{ width: 56, height: 56, borderRadius: 14, background: "var(--accent-dim)", border: "1px solid rgba(108,99,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
@@ -112,23 +147,25 @@ export default function PagePredictions({ setPage }) {
     );
   }
 
+  // ── Main render ───────────────────────────────────────────────────────────
+
   return (
     <div className="page-enter">
       <div className="page-header">
         <div className="page-title">Predictions</div>
         <div className="page-subtitle">
-          Score new data using your trained {modelMeta?.type?.toUpperCase()} model ({modelMeta?.task})
+          Score data using your trained {modelMeta?.type?.toUpperCase()} model ({modelMeta?.task})
         </div>
       </div>
 
-      {/* Model switcher — shown when multiple models trained */}
+      {/* Model switcher */}
       {trainedModels?.length > 1 && (
         <div style={{ marginBottom: 16, padding: "10px 14px", background: "var(--bg3)", border: "1px solid var(--border2)", borderRadius: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <span style={{ fontSize: 11, color: "var(--text3)", fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.08em", flexShrink: 0 }}>Active model:</span>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {trainedModels.map(m => {
               const isActive = m.model_id === modelId;
-              const color = MODEL_COLORS[m.model_type] || "var(--accent2)";
+              const color    = MODEL_COLORS[m.model_type] || "var(--accent2)";
               return (
                 <button
                   key={m.model_id}
@@ -154,21 +191,78 @@ export default function PagePredictions({ setPage }) {
         </div>
       )}
 
-      <div className="flex gap-2 mb-5">
-        <input ref={fileInputRef} type="file" accept=".csv,.xlsx" style={{ display: "none" }} onChange={e => handleFile(e.target.files[0])} />
-        <button className="btn-primary" onClick={() => fileInputRef.current?.click()} disabled={loading}>
-          {loading
-            ? <svg className="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 11-6.219-8.56" /></svg>
-            : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={Icons.upload} /></svg>
-          }
-          {loading ? "Scoring…" : "Upload New Data"}
-        </button>
-        {results && (
-          <button className="btn-secondary" onClick={downloadCSV}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={Icons.download} /></svg>
-            Download Predictions
-          </button>
-        )}
+      {/* Score mode toggle + actions */}
+      <div style={{ marginBottom: 16 }}>
+
+        {/* Toggle pill */}
+        <div style={{ display: "flex", gap: 0, marginBottom: 12, background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 9, padding: 3, width: "fit-content" }}>
+          {[
+            { key: "session", label: "Current Dataset", icon: Icons.layers },
+            { key: "file",    label: "Upload New File",  icon: Icons.upload },
+          ].map(({ key, label, icon }) => (
+            <button
+              key={key}
+              onClick={() => { setScoreMode(key); setError(""); }}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "6px 14px", borderRadius: 6, border: "none",
+                background: scoreMode === key ? "var(--accent-dim)" : "transparent",
+                color:      scoreMode === key ? "var(--accent2)"    : "var(--text3)",
+                fontWeight: scoreMode === key ? 600 : 400,
+                fontSize: 12, cursor: "pointer", transition: "all 0.15s",
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d={icon} />
+              </svg>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Action row */}
+        <div className="flex gap-2">
+          {scoreMode === "session" ? (
+            <button className="btn-primary" onClick={handleScoreSession} disabled={loading}>
+              {loading
+                ? <svg className="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 11-6.219-8.56" /></svg>
+                : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={Icons.predict} /></svg>
+              }
+              {loading ? "Scoring…" : `Score "${sessionFileName || "Current Dataset"}"`}
+            </button>
+          ) : (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.xlsx"
+                style={{ display: "none" }}
+                onChange={e => handleFile(e.target.files[0])}
+              />
+              <button className="btn-primary" onClick={() => fileInputRef.current?.click()} disabled={loading}>
+                {loading
+                  ? <svg className="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 11-6.219-8.56" /></svg>
+                  : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={Icons.upload} /></svg>
+                }
+                {loading ? "Scoring…" : "Upload & Score"}
+              </button>
+            </>
+          )}
+
+          {results && (
+            <button className="btn-secondary" onClick={downloadCSV}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={Icons.download} /></svg>
+              Download CSV
+            </button>
+          )}
+        </div>
+
+        {/* Hint text */}
+        <div style={{ marginTop: 8, fontSize: 11, color: "var(--text3)" }}>
+          {scoreMode === "session"
+            ? `Using the dataset already loaded in your workspace · ${sessionFileName || "Current Dataset"}`
+            : "Upload a separate CSV or XLSX with the same columns as your training data"}
+        </div>
       </div>
 
       {error && (
@@ -177,16 +271,31 @@ export default function PagePredictions({ setPage }) {
         </div>
       )}
 
-      {!results ? (
+      {/* Empty state */}
+      {!results && (
         <div className="card" style={{ textAlign: "center", padding: "60px 20px" }}>
           <div style={{ width: 56, height: 56, borderRadius: 14, background: "var(--accent-dim)", border: "1px solid rgba(108,99,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent2)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d={Icons.predict} /></svg>
           </div>
           <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text)", marginBottom: 6 }}>Ready to Score</div>
-          <div style={{ fontSize: 12, color: "var(--text3)" }}>Upload new data to generate predictions</div>
+          <div style={{ fontSize: 12, color: "var(--text3)" }}>
+            {scoreMode === "session"
+              ? "Click the button above to run predictions on your current dataset"
+              : "Upload a new file to generate predictions"}
+          </div>
         </div>
-      ) : (
+      )}
+
+      {/* Results */}
+      {results && (
         <>
+          {results.source === "session" && (
+            <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--green)" }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d={Icons.check}/></svg>
+              Scored using cleaned session dataset — no re-upload needed
+            </div>
+          )}
+
           {/* Summary stats */}
           <div className="grid-3 mb-5 fade-up">
             <div className="stat-block">
@@ -216,7 +325,8 @@ export default function PagePredictions({ setPage }) {
 
           {/* Results table */}
           <div className="card fade-up fade-up-1">
-            <div className="card-title">Predicted Results
+            <div className="card-title">
+              Predicted Results
               <span className="tag tag-blue" style={{ marginLeft: "auto" }}>{fileName}</span>
             </div>
             <div style={{ overflowX: "auto" }}>
@@ -226,7 +336,7 @@ export default function PagePredictions({ setPage }) {
                     <th>ID</th>
                     <th>Prediction</th>
                     {isClassification && results.predictions[0]?.probability !== undefined && <th>Confidence</th>}
-                    {isClassification && results.predictions[0]?.confidence !== undefined && <th>Risk Level</th>}
+                    {isClassification && results.predictions[0]?.confidence  !== undefined && <th>Risk Level</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -269,11 +379,13 @@ export default function PagePredictions({ setPage }) {
           </div>
         </>
       )}
+
       <NextStepBar
-  label="Generate Report"
-  to="/report"
-  setPage={setPage}
-  note="Next: generate a report from your analysis and model results"
-/>    </div>
+        label="Generate Report"
+        to="/report"
+        setPage={setPage}
+        note="Next: generate a report from your analysis and model results"
+      />
+    </div>
   );
 }

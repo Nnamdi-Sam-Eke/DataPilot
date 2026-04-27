@@ -159,16 +159,17 @@ export async function saveDataset(userId, dataset, projectId = null) {
   const datasetsRef = collection(db, "users", userId, "datasets");
 
   const payload = {
-    fileName: dataset.fileName || "",
-    fileSize: dataset.fileSize || 0,
+    fileName:     dataset.fileName     || "",
+    fileSize:     dataset.fileSize     || 0,
     lastModified: dataset.lastModified || 0,
-    rowCount: dataset.rowCount || 0,
-    columns: dataset.columns || [],
-    summary: dataset.summary || null,
-    sessionId: dataset.sessionId || null,
-    projectId: projectId || null,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    rowCount:     dataset.rowCount     || 0,
+    columns:      dataset.columns      || [],
+    summary:      dataset.summary      || null,
+    sessionId:    dataset.sessionId    || null,
+    storageKey:   dataset.storageKey   || null,  // B2 key for cross-device restore
+    projectId:    projectId            || null,
+    createdAt:    serverTimestamp(),
+    updatedAt:    serverTimestamp(),
   };
 
   const docRef = await addDoc(datasetsRef, payload);
@@ -278,4 +279,62 @@ export async function deleteProject(userId, projectId) {
 
   await Promise.all(snapshot.docs.map((docSnap) => deleteDoc(docSnap.ref)));
   await deleteDoc(doc(db, "users", userId, "projects", projectId));
+}
+
+// ── Session restore helpers ───────────────────────────────────────────────
+
+/**
+ * Patch a dataset doc with a fresh session ID after auto-restore.
+ * Called in DataPilotContext when the backend recreates a session from B2.
+ */
+export async function updateDatasetSessionId(userId, datasetDocId, newSessionId) {
+  if (!userId || !datasetDocId || !newSessionId) {
+    throw new Error("updateDatasetSessionId: all three arguments are required");
+  }
+
+  const datasetRef = doc(db, "users", userId, "datasets", datasetDocId);
+  await updateDoc(datasetRef, {
+    sessionId: newSessionId,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Update an existing dataset doc in-place after a clean→promote operation.
+ * Replaces the stale session ID, storage key, and metadata without creating
+ * a second doc — avoids the orphaned-doc problem from delete+create.
+ */
+export async function updateDatasetOnPromote(userId, datasetDocId, updates) {
+  if (!userId || !datasetDocId || !updates) {
+    throw new Error("updateDatasetOnPromote: all three arguments are required");
+  }
+
+  const datasetRef = doc(db, "users", userId, "datasets", datasetDocId);
+  await updateDoc(datasetRef, {
+    ...updates,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// ── Workspace cloud persistence ───────────────────────────────────────────────
+// Collection: users/{uid}/workspaces/{datasetDocId}
+// Stores all small workspace JSON (chat, clean ops, train config, B2 keys, etc.)
+
+export async function saveWorkspaceData(userId, datasetDocId, data) {
+  if (!userId || !datasetDocId || !data) return;
+  const wsRef = doc(db, "users", userId, "workspaces", datasetDocId);
+  await setDoc(wsRef, { ...data, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+export async function loadWorkspaceData(userId, datasetDocId) {
+  if (!userId || !datasetDocId) return null;
+  const wsRef = doc(db, "users", userId, "workspaces", datasetDocId);
+  const snap  = await getDoc(wsRef);
+  return snap.exists() ? snap.data() : null;
+}
+
+export async function deleteWorkspaceData(userId, datasetDocId) {
+  if (!userId || !datasetDocId) return;
+  const wsRef = doc(db, "users", userId, "workspaces", datasetDocId);
+  await deleteDoc(wsRef);
 }

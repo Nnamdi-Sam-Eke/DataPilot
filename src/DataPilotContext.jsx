@@ -1,6 +1,6 @@
 // DataPilotContext.jsx
 
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   signUpUser,
   signInUser,
@@ -13,10 +13,19 @@ import {
   getUserProjects,
   deleteDataset,
   saveDataset,
+  updateDatasetSessionId,
+  updateDatasetOnPromote,
+  saveWorkspaceData,
+  loadWorkspaceData,
+  deleteWorkspaceData,
 } from "./services/firestore";
 import { doc, getDoc, serverTimestamp, enableNetwork } from "firebase/firestore";
 import { db } from "./services/firebase";
 import { fetchSessionData } from "./services/data";
+import {
+  saveModelToCloud,
+  restoreModelFromCloud,
+} from "./services/workspaceSync";
 
 const DataPilotContext = createContext(null);
 
@@ -147,6 +156,9 @@ export function DataPilotProvider({ children }) {
   const [previewLoading, setPreviewLoadingRaw] = useState(false);
   const [groqKey,        setGroqKeyRaw]        = useState(p?.groqKey || "");
 
+  // Prevents auto-save effects from firing during session restore
+  const cloudSyncEnabled = useRef(false);
+
   // ── Offline / Network ─────────────────────────────────────────────────
   const [isOffline,          setIsOffline]          = useState(() => !navigator.onLine);
   const [retryingConnection, setRetryingConnection] = useState(false);
@@ -182,11 +194,10 @@ export function DataPilotProvider({ children }) {
     setGlobalApiRetryKey((k) => k + 1);
   }, []);
 
-  useEffect(() => {
-    if (!isOffline) return;
-    const iv = setInterval(() => retryConnection(), 5000);
-    return () => clearInterval(iv);
-  }, [isOffline, retryConnection]);
+  // NOTE: No auto-retry interval here. The browser `online` event (above)
+  // dismisses OfflinePopup in real time. Manual retry via the button calls
+  // retryConnection() explicitly — polling was fighting the event listener
+  // and causing the popup to flicker or fail to dismiss.
 
   const markOfflineIfFirestoreErr = useCallback((error) => {
     try {
@@ -256,6 +267,7 @@ export function DataPilotProvider({ children }) {
     setActiveIdxRaw(null);
     setPreviewLoadingRaw(false);
     applyWorkspace(freshWorkspace());
+    cloudSyncEnabled.current = false;
   }, [applyWorkspace]);
 
   // ── markSessionExpired ────────────────────────────────────────────────
@@ -325,6 +337,66 @@ export function DataPilotProvider({ children }) {
     sessions, activeIdx, activeWorkspace, userProfile, projects, groqKey,
   ]);
 
+  // ── Cloud workspace auto-save ─────────────────────────────────────────
+  // Derives the active Firestore dataset doc ID — used as the workspace key
+  const datasetDocId = activeIdx !== null ? (sessions[activeIdx]?.id || null) : null;
+
+  // Small data → Firestore (debounced 2s to avoid hammering on every keystroke)
+  useEffect(() => {
+    if (!cloudSyncEnabled.current || !user?.uid || !datasetDocId) return;
+    const timer = setTimeout(() => {
+      saveWorkspaceData(user.uid, datasetDocId, {
+        chatMessages,
+        cleanOpLog,
+        cleanFillStrategies,
+        cleanRenameMap,
+        cleanCastMap,
+        cleanEncodeMap,
+        cleanPromoted,
+        trainConfig,
+        reportFormat,
+        predictionFileName,
+      }).catch(err => console.warn("Workspace small-data save failed:", err));
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [
+    chatMessages, cleanOpLog, cleanFillStrategies, cleanRenameMap,
+    cleanCastMap, cleanEncodeMap, cleanPromoted, trainConfig,
+    reportFormat, predictionFileName,
+    user?.uid, datasetDocId,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Trained models → R2  (fires when a new model is added to trainedModels)
+  // Saves each model that doesn't yet have an r2Key
+  const prevTrainedModelsLen = useRef(0);
+  useEffect(() => {
+    if (!cloudSyncEnabled.current || !datasetDocId || !user?.uid) return;
+    if (trainedModels.length <= prevTrainedModelsLen.current) return;
+    prevTrainedModelsLen.current = trainedModels.length;
+
+    const newestModel = trainedModels[trainedModels.length - 1];
+    if (!newestModel?.model_id || newestModel.r2Key) return;
+
+    saveModelToCloud(datasetDocId, newestModel.model_id, API_BASE)
+      .then(r2Key => {
+        // Attach r2Key to the model entry and persist metadata to Firestore
+        const updatedModels = trainedModels.map(m =>
+          m.model_id === newestModel.model_id ? { ...m, r2Key } : m
+        );
+        setTrainedModelsRaw(updatedModels);
+        saveWorkspaceData(user.uid, datasetDocId, {
+          trainedModelsMetadata: updatedModels.map(({ model_id, model_type, task, metrics, feature_importance, r2Key: rk }) =>
+            ({ model_id, model_type, task, metrics, feature_importance, r2Key: rk })
+          ),
+          activeModelId:     newestModel.model_id,
+          activeModelR2Key:  r2Key,
+          activeModelMeta:   modelMeta,
+          activeTrainResults: trainResults,
+        }).catch(() => {});
+      })
+      .catch(err => console.warn("Model R2 save failed:", err));
+  }, [trainedModels.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Auth listener ─────────────────────────────────────────────────────
   useEffect(() => {
     const unsubscribe = observeAuthState(async (firebaseUser) => {
@@ -385,6 +457,7 @@ export function DataPilotProvider({ children }) {
               projectId:     d.projectId     || null,
               uploadedAt:    d.uploadedAt    || null,
               expiryMinutes: d.expiryMinutes || 180,
+              storageKey:    d.storageKey    || null,  // R2 key for cross-device restore
               preview:       null,
               // Merge saved workspace from localStorage
               workspace:     lsSession.workspace || freshWorkspace(),
@@ -406,15 +479,71 @@ export function DataPilotProvider({ children }) {
             restoredSessions.map((s) => probeSession(s.sessionId))
           );
 
-          const validatedSessions = restoredSessions.map((s, i) => {
-            const result = validationResults[i];
-            const isExpired =
-              result.status === "rejected" && result.reason?.code === "SESSION_EXPIRED";
-            return isExpired ? { ...s, expired: true } : s;
-          });
+          // ── Auto-restore expired sessions from R2 ──────────────────────
+          // For each expired session that has a storageKey in Firestore,
+          // ask the backend to fetch the file from R2 and recreate the
+          // DATA_CACHE session. The frontend just swaps session IDs — no
+          // file bytes ever flow through the browser. Works on any device.
+          const finalSessions = await Promise.all(
+            restoredSessions.map(async (s, i) => {
+              const result    = validationResults[i];
+              const isExpired =
+                result.status === "rejected" &&
+                result.reason?.code === "SESSION_EXPIRED";
 
-          // Filter out expired sessions so they don't clutter the UI
-          const liveSessions = validatedSessions.filter((s) => !s.expired);
+              // Session is alive — use probe result as-is
+              if (!isExpired) return s;
+
+              const { storageKey, id: datasetDocId } = s;
+
+              if (!storageKey || !datasetDocId || !firebaseUser?.uid) {
+                // No R2 file available — user must re-upload manually
+                return { ...s, expired: true };
+              }
+
+              try {
+                // Single backend call — R2 fetch + session creation happens server-side
+                const plan = "pro"; // beta users all get pro
+                const res  = await fetch(`${API_BASE}/session/restore`, {
+                  method:  "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body:    JSON.stringify({ storage_key: storageKey, plan }),
+                });
+
+                if (!res.ok) throw new Error("Restore endpoint failed");
+
+                const data = await res.json();
+                if (data.error || data.detail) throw new Error(data.error || data.detail);
+
+                const newSessionId = data.session_id;
+
+                // Patch Firestore so the next login has the current session_id
+                await updateDatasetSessionId(
+                  firebaseUser.uid,
+                  datasetDocId,
+                  newSessionId
+                );
+
+                return {
+                  ...s,
+                  sessionId:     newSessionId,
+                  rowCount:      data.row_count      || s.rowCount,
+                  columns:       data.columns        || s.columns,
+                  summary:       data.summary        || s.summary,
+                  uploadedAt:    data.uploaded_at    || new Date().toISOString(),
+                  expiryMinutes: data.expiry_minutes || s.expiryMinutes,
+                  expired:       false,
+                  preview:       null,
+                };
+              } catch (restoreErr) {
+                console.warn(`Auto-restore failed for "${s.fileName}":`, restoreErr);
+                return { ...s, expired: true };
+              }
+            })
+          );
+
+          // Sessions we couldn't restore stay out of the active list
+          const liveSessions = finalSessions.filter((s) => !s.expired);
 
           setSessionsRaw(liveSessions);
 
@@ -437,13 +566,79 @@ export function DataPilotProvider({ children }) {
               : (first.workspace || freshWorkspace());
             applyWorkspace(wsToRestore);
 
+            // ── Cloud workspace restore (non-blocking) ────────────────────
+            // Runs in background after local workspace is already applied.
+            // Fills in anything localStorage doesn't have (new device, cleared storage).
+            if (first.id && firebaseUser?.uid) {
+              (async () => {
+                try {
+                  const cloudData = await loadWorkspaceData(firebaseUser.uid, first.id);
+                  if (!cloudData) return;
+
+                  // Merge rule: local value wins if present, cloud fills in nulls
+                  const merge = (local, cloud) => (local != null && local !== "" && !(Array.isArray(local) && !local.length) ? local : cloud);
+
+                  const merged = {
+                    modelId:             wsToRestore.modelId             ?? cloudData.activeModelId   ?? null,
+                    modelMeta:           wsToRestore.modelMeta           ?? cloudData.activeModelMeta ?? null,
+                    trainResults:        wsToRestore.trainResults        ?? cloudData.activeTrainResults ?? null,
+                    trainedModels:       merge(wsToRestore.trainedModels, cloudData.trainedModelsMetadata || []),
+                    trainConfig:         merge(wsToRestore.trainConfig,   cloudData.trainConfig)        ?? { selectedModel: "rf", targetCol: "", testSize: 0.2 },
+                    savedPlots:          wsToRestore.savedPlots          ?? [],
+                    predictionResults:   wsToRestore.predictionResults   ?? null,
+                    predictionFileName:  merge(wsToRestore.predictionFileName, cloudData.predictionFileName || ""),
+                    savedReport:         wsToRestore.savedReport         ?? null,
+                    reportFormat:        merge(wsToRestore.reportFormat,  cloudData.reportFormat || "HTML"),
+                    reportChecked:       wsToRestore.reportChecked       ?? cloudData.reportChecked ?? null,
+                    chatMessages:        merge(wsToRestore.chatMessages,  cloudData.chatMessages),
+                    cleanPreview:        wsToRestore.cleanPreview        ?? null,
+                    cleanOpLog:          merge(wsToRestore.cleanOpLog,    cloudData.cleanOpLog        || []),
+                    cleanFillStrategies: merge(wsToRestore.cleanFillStrategies, cloudData.cleanFillStrategies || {}),
+                    cleanRenameMap:      merge(wsToRestore.cleanRenameMap,      cloudData.cleanRenameMap      || {}),
+                    cleanCastMap:        merge(wsToRestore.cleanCastMap,        cloudData.cleanCastMap        || {}),
+                    cleanEncodeMap:      merge(wsToRestore.cleanEncodeMap,      cloudData.cleanEncodeMap      || {}),
+                    cleanPromoted:       wsToRestore.cleanPromoted       ?? cloudData.cleanPromoted ?? false,
+                  };
+                  applyWorkspace(merged);
+
+                  // Models: restore each trained model back into backend MODEL_STORE
+                  if (cloudData.trainedModelsMetadata?.length) {
+                    const restoredModels = await Promise.all(
+                      cloudData.trainedModelsMetadata.map(async (m) => {
+                        if (!m.r2Key) return m;
+                        try {
+                          const restored = await restoreModelFromCloud(m.r2Key, API_BASE);
+                          return { ...m, model_id: restored.model_id, metrics: restored.metrics, feature_importance: restored.feature_importance };
+                        } catch { return m; }
+                      })
+                    );
+                    setTrainedModelsRaw(restoredModels);
+                    // Set active model to the first successfully restored one
+                    const activeModel = restoredModels.find(m => m.model_id && m.r2Key === cloudData.activeModelR2Key) || restoredModels.find(m => m.model_id);
+                    if (activeModel?.model_id) {
+                      setModelIdRaw(activeModel.model_id);
+                      setModelMetaRaw({ type: activeModel.model_type, task: activeModel.task, metrics: activeModel.metrics, featureImportance: activeModel.feature_importance });
+                    }
+                  }
+
+                } catch (err) {
+                  console.warn("Cloud workspace restore failed (non-fatal):", err);
+                } finally {
+                  // Enable auto-save now that restore is fully complete
+                  cloudSyncEnabled.current = true;
+                }
+              })();
+            } else {
+              cloudSyncEnabled.current = true;
+            }
+
             if (first.expired) {
               setCleanPreviewRaw(null);
             } else {
               setPreviewLoadingRaw(true);
               try {
-                // Find the original index in validatedSessions to get the correct probe result
-                const origIdx = validatedSessions.findIndex((s) => s.sessionId === first.sessionId);
+                // Find the original index in restoredSessions to get the correct probe result
+                const origIdx = restoredSessions.findIndex((s) => s.sessionId === first.sessionId);
                 const probeResult = validationResults[origIdx];
                 if (probeResult.status === "fulfilled") {
                   const data = probeResult.value;
@@ -705,79 +900,122 @@ export function DataPilotProvider({ children }) {
   ]);
 
   // NEW: Promote cleaned data + remove original (Simplified & Fixed)
-  const promoteCleanedSession = useCallback(async (oldSessionId, promoteResponse) => {
-    if (!promoteResponse?.new_session_id) {
-      console.error("Invalid promote response");
-      return;
-    }
+const promoteCleanedSession = useCallback(async (oldSessionId, promoteResponse) => {
+  if (!promoteResponse?.new_session_id) {
+    console.error("Invalid promote response");
+    return;
+  }
 
-    const newSessionId = promoteResponse.new_session_id;
+  const newSessionId = promoteResponse.new_session_id;
 
-    // 1. Find the original session to replace
-    const originalIdx = sessions.findIndex((s) => s.sessionId === oldSessionId);
-    if (originalIdx === -1) {
-      console.warn("Original session not found in list");
-      return;
-    }
+  // 1. Find the original session
+  const originalIdx = sessions.findIndex((s) => s.sessionId === oldSessionId);
+  if (originalIdx === -1) return;
+  const originalSession = sessions[originalIdx];
+  const originalDocId = originalSession?.id || null;
+  const originalStorageKey = originalSession?.storageKey || null;
 
-    const originalSession = sessions[originalIdx];
-    const originalDocId = originalSession?.id || null;
-
-    // 2. Replace the original session slot with cleaned version
-    setSessionsRaw((prev) => {
-      const idx = prev.findIndex((s) => s.sessionId === oldSessionId);
-      if (idx === -1) return prev;
-      const found = prev[idx];
-      const cleanedSlot = {
-        ...found,
-        id: found.id,
-        sessionId: newSessionId,
-        fileName: promoteResponse.fileName || (found.fileName ? `${found.fileName.replace(/\.[^.]+$/, "")}_cleaned${(found.fileName.match(/\.[^.]+$/)||[""])[0]}` : `Cleaned_${newSessionId.slice(0,8)}`),
-        rowCount: promoteResponse.row_count || found.rowCount || 0,
-        columns: promoteResponse.columns || found.columns || [],
-        summary: promoteResponse.summary || found.summary || null,
-        preview: null,
-        uploadedAt: new Date().toISOString(),
-        workspace: freshWorkspace(),
-      };
-      const out = [...prev];
-      out[idx] = cleanedSlot;
-      return out;
+  // --- NEW STEP: GET THE KEY BEFORE UPDATING STATE ---
+  // We perform the Snapshot FIRST. This way, the UI never sees a 'null' or 'stale' key.
+  let newStorageKey = null;
+  try {
+    const snapRes = await fetch(`${API_BASE}/session/snapshot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+  session_id:     newSessionId,
+  file_name:      promoteResponse.fileName || `cleaned_${newSessionId.slice(0, 8)}`,
+  dataset_doc_id: originalDocId || "",
+  uid:            user?.uid     || "",
+}),
     });
-
-    // 3. Set active index and session state to the original slot (now with cleaned data)
-    setActiveIdxRaw(originalIdx);
-    setSessionIdRaw(newSessionId);
-    setFileNameRaw(promoteResponse.fileName || originalSession?.fileName || "Cleaned Dataset");
-    setColumnsRaw(promoteResponse.columns || []);
-    setSummaryRaw(promoteResponse.summary || null);
-    setRowCountRaw(promoteResponse.row_count || 0);
-
-    // 4. Persist to Firestore (delete old doc, save new dataset)
-    if (user?.uid) {
-      try {
-        if (originalDocId) {
-          try {
-            await deleteDataset(user.uid, originalDocId);
-            console.log(`✅ Deleted original Firestore doc ${originalDocId}`);
-          } catch (err) {
-            console.warn(`⚠️ Failed to delete original Firestore doc ${originalDocId}:`, err);
-          }
-        }
-        await saveDataset(user.uid, {
-          fileName: promoteResponse.fileName,
-          fileSize: originalSession?.fileSize || 0,
-          lastModified: originalSession?.lastModified || 0,
-          rowCount: promoteResponse.row_count || 0,
-          columns: promoteResponse.columns || [],
-          summary: promoteResponse.summary || null,
-          sessionId: newSessionId,
-        }, originalSession?.projectId || null);
-        console.log(`✅ Saved promoted session to Firestore: ${newSessionId}`);
-      } catch (err) {
-        console.warn("Failed to persist promoted session to Firestore:", err);
-      }
+    if (snapRes.ok) {
+      const snapData = await snapRes.json();
+      newStorageKey = snapData.storage_key;
+      console.log(`✅ Cleaned snapshot stored: ${newStorageKey}`);
     }
+  } catch (snapErr) {
+    console.error("⚠️ Snapshot failed — Firestore will use original key. Cross-device restore may load uncleaned data.", snapErr);
+  }
+
+  // 2 & 3. UPDATE ALL STATE ATOMICALLY
+  // Now we update everything. When effects trigger, they see the NEW ID + NEW KEY.
+  setSessionsRaw((prev) => {
+    const idx = prev.findIndex((s) => s.sessionId === oldSessionId);
+    if (idx === -1) return prev;
+    
+    const out = [...prev];
+    out[idx] = {
+      ...prev[idx],
+      sessionId: newSessionId,
+      // We use the new key immediately so there is no 'null' window
+      storageKey: newStorageKey || originalStorageKey, 
+      fileName: promoteResponse.fileName || prev[idx].fileName,
+      rowCount: promoteResponse.row_count || prev[idx].rowCount,
+      columns: promoteResponse.columns || prev[idx].columns,
+      summary: promoteResponse.summary || prev[idx].summary,
+      preview: null,
+      uploadedAt: new Date().toISOString(),
+      workspace: freshWorkspace(),
+    };
+    return out;
+  });
+
+  setActiveIdxRaw(originalIdx);
+  setSessionIdRaw(newSessionId);
+  setFileNameRaw(promoteResponse.fileName || originalSession?.fileName || "Cleaned Dataset");
+
+  // 4. Update Firestore — patch the existing doc with the new sessionId + new CSV storageKey.
+  //    This is what makes restore work after promote: Firestore must point at the
+  //    new _cleaned.csv in B2, not the original file that gets deleted in step 5.
+  //
+  //    originalDocId comes from session.id stamped at upload time. It can be null if
+  //    the session was created before this field was added, or if addSession ran before
+  //    the Firestore write returned. In that case we fall back to a live query by
+  //    sessionId so the update never silently skips.
+  if (user?.uid) {
+    try {
+      let docIdToUpdate = originalDocId;
+
+      if (!docIdToUpdate) {
+        // Fallback: find the doc by matching the old sessionId
+        const allDatasets = await getUserDatasets(user.uid);
+        const match = allDatasets.find((d) => d.sessionId === oldSessionId);
+        docIdToUpdate = match?.id || null;
+        if (docIdToUpdate) {
+          console.log(`🔍 Resolved Firestore docId via sessionId fallback: ${docIdToUpdate}`);
+        }
+      }
+
+      if (docIdToUpdate) {
+  const summaryForFirestore = { ...(promoteResponse.summary || {}) };
+  delete summaryForFirestore.__meta__;
+
+  await updateDatasetOnPromote(user.uid, docIdToUpdate, {
+    fileName:   promoteResponse.fileName,
+    rowCount:   promoteResponse.row_count  || 0,
+    columns:    promoteResponse.columns    || [],
+    summary:    summaryForFirestore,
+    sessionId:  newSessionId,
+    storageKey: newStorageKey || originalStorageKey,
+  });
+        console.log(`✅ Firestore doc ${docIdToUpdate} updated → session ${newSessionId}, key ${newStorageKey}`);
+      } else {
+        console.warn("⚠️ Could not resolve Firestore docId for promote — storageKey not updated");
+      }
+    } catch (err) {
+      console.warn("Firestore update failed:", err);
+    }
+  }
+
+  // 5. Cleanup the old file (Safe to do now because state and Firestore are updated)
+  if (newStorageKey && originalStorageKey && newStorageKey !== originalStorageKey) {
+    fetch(`${API_BASE}/file/delete`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ storage_key: originalStorageKey }),
+    }).catch((e) => console.warn("Cleanup failed:", e));
+  }
 
     // 5. Fetch preview data for the cleaned session (with retries for transient 404s)
     try {
@@ -820,11 +1058,23 @@ export function DataPilotProvider({ children }) {
     if (sessionToRemove?.sessionId) {
       fetch(`${API_BASE}/session/${sessionToRemove.sessionId}`, { method: "DELETE" }).catch(() => {});
     }
+    // Delete the file from B2 so storage doesn't accumulate orphaned files
+    if (sessionToRemove?.storageKey) {
+      fetch(`${API_BASE}/file/delete`, {
+        method:  "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ storage_key: sessionToRemove.storageKey }),
+      }).catch(() => {});
+    }
     if (sessionToRemove?.sessionId && user?.uid) {
       deleteDataset(user.uid, sessionToRemove.sessionId).catch((err) => {
         console.error("Failed to delete dataset from Firestore:", err);
         try { markOfflineIfFirestoreErr(err); } catch {}
       });
+      // Delete cloud workspace data for this session
+      if (sessionToRemove.id) {
+        deleteWorkspaceData(user.uid, sessionToRemove.id).catch(() => {});
+      }
     }
 
     setSessionsRaw(updated);
@@ -918,6 +1168,8 @@ export function DataPilotProvider({ children }) {
 
       groqKey,       setGroqKey:       setGroqKeyRaw,
       userProfile,   setUserProfile:   setUserProfileRaw,
+
+      datasetDocId,
 
       theme, setTheme, toggleTheme,
       accentColor, setAccentColor,

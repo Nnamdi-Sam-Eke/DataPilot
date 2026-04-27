@@ -263,19 +263,23 @@ function AppShell() {
     document.documentElement.setAttribute("data-accent", savedAccent);
   }, []);
 
-  // ── Backend keep-alive (Render free tier anti-sleep) ───────────────────
+  // ── Backend health monitor ──────────────────────────────────────────────
+  // Polls every 5 s so backend down/up is detected in near real-time.
+  // Skips when offline — OfflinePopup owns that state; we don't want
+  // ApiFallback firing on top of it. Also serves as Render keep-alive.
   useEffect(() => {
     const ping = async () => {
+      if (!navigator.onLine) return;
       try {
-        const res = await fetch(`${API_BASE}/health`);
-        if (!res.ok) setGlobalApiError("Backend health check failed");
+        const res = await fetch(`${API_BASE}/health`, { cache: "no-store" });
+        if (!res.ok) setGlobalApiError("Could not reach backend");
         else setGlobalApiError(null);
       } catch (err) {
         setGlobalApiError("Could not reach backend");
       }
     };
     ping();
-    const interval = setInterval(ping, 9 * 60 * 1000); // every 9 min
+    const interval = setInterval(ping, 5_000); // every 5 seconds
     return () => clearInterval(interval);
   }, [setGlobalApiError]);
 
@@ -471,7 +475,7 @@ function AppShell() {
         />
         {globalApiError && (
           <div style={{ position: "fixed", left: 16, right: 16, top: 16, zIndex: 9998 }}>
-            <ApiFallback message={globalApiError} onRetry={retryGlobalApi} />
+            <ApiFallback onClose={() => setGlobalApiError(null)} />
           </div>
         )}
         {body}

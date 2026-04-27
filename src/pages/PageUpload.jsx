@@ -174,54 +174,63 @@ export default function PageUpload({ setPage }) {
         });
       }, 800);
 
-      const sessionPayload = {
-        sessionId: data.session_id,
-        fileName: data.file_name || name,
-        fileSize: file.size,
-        lastModified: file.lastModified,
-        rowCount: data.row_count || 0,
-        columns: data.columns || [],
-        summary: data.summary || null,
-        projectId: currentProjectId || null,   // ← tag session with its project
-        uploadedAt: data.uploaded_at || new Date().toISOString(),
-        expiryMinutes: data.expiry_minutes || 180,
-        preview:
-          data.sample && data.columns
-            ? { columns: data.columns, rows: data.sample }
-            : null,
-      };
+      // ... inside uploadFile try block, after the fetch and data processing ...
 
-      addSession(sessionPayload);
+// 1. Prepare base data for Firestore
+let firestoreDocId = null;
+if (user?.uid) {
+  try {
+    // Capture the ID returned from saveDataset
+    firestoreDocId = await saveDataset(user.uid, {
+      fileName: data.file_name || name,
+      fileSize: file.size,
+      lastModified: file.lastModified,
+      rowCount: data.row_count || 0,
+      columns: data.columns || [],
+      summary: data.summary || null,
+      sessionId: data.session_id,
+      storageKey: data.storage_key || null,
+    }, currentProjectId);
+  } catch (err) {
+    console.error("Failed to save dataset to Firestore:", err);
+  }
+}
 
-      // Update global processed rows stat (from backend)
-      if (typeof setTotalRowsProcessed === "function" && typeof data.total_rows_processed !== "undefined") {
-        setTotalRowsProcessed(data.total_rows_processed || 0);
-      }
+// 2. Create the session payload including the new ID
+const sessionPayload = {
+  id: firestoreDocId,                    // ← Now attached from Firestore
+  sessionId: data.session_id,
+  fileName: data.file_name || name,
+  fileSize: file.size,
+  lastModified: file.lastModified,
+  rowCount: data.row_count || 0,
+  columns: data.columns || [],
+  summary: data.summary || null,
+  storageKey: data.storage_key || null,
+  projectId: currentProjectId || null,
+  uploadedAt: data.uploaded_at || new Date().toISOString(),
+  expiryMinutes: data.expiry_minutes || 180,
+  preview:
+    data.sample && data.columns
+      ? { columns: data.columns, rows: data.sample }
+      : null,
+};
 
-      if (user?.uid) {
-        logActivity(user.uid, {
-          action: "Dataset uploaded",
-          detail: `${sessionPayload.fileName} · ${sessionPayload.rowCount.toLocaleString()} rows`,
-          color: "var(--accent2)",
-        });
-      }
+// 3. Add to local state
+addSession(sessionPayload);
 
-      // Save to Firestore with project linking
-      if (user?.uid) {
-        try {
-          await saveDataset(user.uid, {
-            fileName: sessionPayload.fileName,
-            fileSize: file.size,
-            lastModified: file.lastModified,
-            rowCount: sessionPayload.rowCount,
-            columns: sessionPayload.columns,
-            summary: sessionPayload.summary,
-            sessionId: sessionPayload.sessionId,
-          }, currentProjectId);   // ← This links the dataset to the project
-        } catch (err) {
-          console.error("Failed to save dataset to Firestore:", err);
-        }
-      }
+// 4. Update global stats and log activity
+if (typeof setTotalRowsProcessed === "function" && typeof data.total_rows_processed !== "undefined") {
+  setTotalRowsProcessed(data.total_rows_processed || 0);
+}
+
+if (user?.uid) {
+  logActivity(user.uid, {
+    action: "Dataset uploaded",
+    detail: `${sessionPayload.fileName} · ${sessionPayload.rowCount.toLocaleString()} rows`,
+    color: "var(--accent2)",
+  });
+}
     } catch (e) {
       clearInterval(iv);
       setUploading((prev) => {
@@ -235,6 +244,7 @@ export default function PageUpload({ setPage }) {
       }));
     }
   };
+
 
   const handleFiles = (files) => {
     Array.from(files).forEach(uploadFile);

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { SparkLine } from "../shared/charts.jsx";
 import { Icons } from "../shared/icons.jsx";
-import { useDataPilot } from "../DataPilotContext.jsx";
+import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";
 import * as dashboardService from "../services/dashboard";
 import * as firestoreService from "../services/firestore";
 
@@ -162,32 +162,18 @@ export default function PageDashboard({ setPage }) {
     };
   }, [user?.uid, setProjects]);
 
+  // Use the realtime datasets listener to derive projectDatasets so the
+  // project panel updates immediately when promoteCleanedSession fires.
   useEffect(() => {
-    if (!user?.uid || !selectedProject?.id || !firestoreService.getProjectDatasets) {
+    if (!selectedProject?.id) {
       setProjectDatasets([]);
+      setProjectDatasetsLoading(false);
       return;
     }
-
-    let cancelled = false;
-
-    const loadProjectDatasets = async () => {
-      setProjectDatasetsLoading(true);
-      try {
-        const data = await firestoreService.getProjectDatasets(user.uid, selectedProject.id);
-        if (!cancelled) setProjectDatasets(data || []);
-      } catch (err) {
-        console.error("Failed to load project datasets:", err);
-        if (!cancelled) setProjectDatasets([]);
-      } finally {
-        if (!cancelled) setProjectDatasetsLoading(false);
-      }
-    };
-
-    loadProjectDatasets();
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.uid, selectedProject?.id]);
+    const filtered = datasets.filter((d) => d.projectId === selectedProject.id);
+    setProjectDatasets(filtered);
+    setProjectDatasetsLoading(false);
+  }, [datasets, selectedProject?.id]);
 
   const sessionMap = useMemo(() => getSessionMap(sessions), [sessions]);
 
@@ -361,6 +347,14 @@ export default function PageDashboard({ setPage }) {
     setDeleting(true);
     try {
       await firestoreService.deleteDataset(user.uid, dataset.id, dataset.projectId || null);
+      // Delete the file from B2 so storage doesn't accumulate orphaned files
+      if (dataset.storageKey) {
+        fetch(`${API_BASE}/file/delete`, {
+          method:  "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ storage_key: dataset.storageKey }),
+        }).catch(() => {});
+      }
       await logDeleteActivity("Dataset deleted", dataset.fileName || "Untitled dataset");
       setConfirmDelete(null);
       setSelectedProject((prev) => (prev ? prev : null));
@@ -382,6 +376,14 @@ export default function PageDashboard({ setPage }) {
     setDeleting(true);
     try {
       await firestoreService.deleteDataset(user.uid, dataset.id, dataset.projectId || null);
+      // Delete the file from B2 so storage doesn't accumulate orphaned files
+      if (dataset.storageKey) {
+        fetch(`${API_BASE}/file/delete`, {
+          method:  "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ storage_key: dataset.storageKey }),
+        }).catch(() => {});
+      }
       await logDeleteActivity(
         "Dataset deleted",
         `${dataset.fileName || "Untitled dataset"}${selectedProject?.name ? ` · ${selectedProject.name}` : ""}`
@@ -406,6 +408,18 @@ export default function PageDashboard({ setPage }) {
   setDeleting(true);
   try {
     const activeProjectId = localStorage.getItem("dp_current_project_id");
+
+    // Delete all B2 files for datasets in this project before removing Firestore docs
+    const datasetsToDelete = projectDatasets.filter((d) => d.projectId === project.id || !d.projectId);
+    datasetsToDelete.forEach((d) => {
+      if (d.storageKey) {
+        fetch(`${API_BASE}/file/delete`, {
+          method:  "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ storage_key: d.storageKey }),
+        }).catch(() => {});
+      }
+    });
 
     await firestoreService.deleteProject(user.uid, project.id);
     await logDeleteActivity("Project deleted", project.name || "Untitled project");

@@ -25,6 +25,9 @@ export default function Sidebar({ page, setPage, isOpen }) {
   const plan         = userProfile?.plan || "Free";
   const avatarLetter = displayName.charAt(0).toUpperCase() || "U";
 
+  // FIX: setPage sends paths like "/dashboard"; compare with the same shape.
+  const isActive = (id) => page === `/${id}` || page === id;
+
   return (
     <nav className={`sidebar${isOpen ? " open" : ""}`}>
       <div className="sidebar-logo">
@@ -34,7 +37,7 @@ export default function Sidebar({ page, setPage, isOpen }) {
       <div className="sidebar-section">
         <div className="sidebar-section-label">Workspace</div>
         {workspace.map((n) => (
-          <div key={n.id} className={`nav-item ${page === n.id ? "active" : ""}`} onClick={() => setPage(`/${n.id}`)}>
+          <div key={n.id} className={`nav-item ${isActive(n.id) ? "active" : ""}`} onClick={() => setPage(`/${n.id}`)}>
             <NavIcon name={n.icon} />{n.label}
             {n.badge && <span className="nav-badge">{n.badge}</span>}
           </div>
@@ -43,7 +46,7 @@ export default function Sidebar({ page, setPage, isOpen }) {
       <div className="sidebar-section">
         <div className="sidebar-section-label">Analysis</div>
         {analysis.map((n) => (
-          <div key={n.id} className={`nav-item ${page === n.id ? "active" : ""}`} onClick={() => setPage(`/${n.id}`)}>
+          <div key={n.id} className={`nav-item ${isActive(n.id) ? "active" : ""}`} onClick={() => setPage(`/${n.id}`)}>
             <NavIcon name={n.icon} />{n.label}
           </div>
         ))}
@@ -51,7 +54,7 @@ export default function Sidebar({ page, setPage, isOpen }) {
       <div className="sidebar-section">
         <div className="sidebar-section-label">Account</div>
         {account.map((n) => (
-          <div key={n.id} className={`nav-item ${page === n.id ? "active" : ""}`} onClick={() => setPage(`/${n.id}`)}>
+          <div key={n.id} className={`nav-item ${isActive(n.id) ? "active" : ""}`} onClick={() => setPage(`/${n.id}`)}>
             <NavIcon name={n.icon} />{n.label}
           </div>
         ))}

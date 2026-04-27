@@ -8,8 +8,11 @@ from datetime import datetime, timedelta
 import math
 import warnings
 import numpy as np
+import os
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 DATA_CACHE = {}
 EXPIRY_MINUTES = 90
@@ -20,10 +23,10 @@ PLAN_EXPIRY: Dict[str, int] = {
 }
 
 # Max rows stored in-memory for free plan users
-MAX_ROWS_FREE = 25_000
+MAX_ROWS_FREE = 20_000
 
 # Hard cap on uploaded file size (bytes) — reject before reading into memory
-MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+MAX_UPLOAD_BYTES = 30 * 1024 * 1024  # 30 MB
 
 # Global user-visible stats (in-memory)
 USER_STATS = {
@@ -44,11 +47,19 @@ def read_csv_safely(buffer: io.BytesIO) -> pd.DataFrame:
     return pd.read_csv(buffer, encoding=encoding)
 
 READERS = {
-    "text/csv": read_csv_safely,
+    "text/csv":   read_csv_safely,
     "text/plain": read_csv_safely,
     "application/vnd.ms-excel": pd.read_excel,
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": pd.read_excel,
     "application/json": pd.read_json,
+}
+
+# Extension-based fallback for browsers that send application/octet-stream
+_EXT_READERS = {
+    "csv":  read_csv_safely,
+    "xlsx": pd.read_excel,
+    "xls":  pd.read_excel,
+    "json": pd.read_json,
 }
 
 def create_session(df: pd.DataFrame, plan: str = "free", file_name: str = None) -> str:
@@ -59,8 +70,9 @@ def create_session(df: pd.DataFrame, plan: str = "free", file_name: str = None) 
 
     DATA_CACHE[session_id] = {
         "df": df,
-        "created_at": now,
-        "uploaded_at": now.isoformat(),
+        "created_at":    now,
+        "last_accessed": now,   # Updated on every get_session call — inactivity timer
+        "uploaded_at":   now.isoformat(),
         "expiry_minutes": expiry_minutes,
         "plan": plan.lower(),
     }
@@ -75,15 +87,20 @@ def get_session(session_id: str):
     if not session:
         return None
     expiry_minutes = session.get("expiry_minutes", EXPIRY_MINUTES)
-    if datetime.utcnow() - session["created_at"] > timedelta(minutes=expiry_minutes):
+    # Use last_accessed for inactivity-based expiry — active sessions never
+    # expire mid-work. Falls back to created_at for sessions created before
+    # this change was deployed.
+    last_touch = session.get("last_accessed") or session["created_at"]
+    if datetime.utcnow() - last_touch > timedelta(minutes=expiry_minutes):
         del DATA_CACHE[session_id]
         return None
+    # Refresh the inactivity clock on every legitimate access
+    session["last_accessed"] = datetime.utcnow()
     return session["df"]
 
 def generate_summary(df: pd.DataFrame) -> Dict[str, Any]:
     """
     Generate a df.describe()-style summary dict with safe datetime handling.
-    Uses format='mixed' (pandas ≥ 2.0) instead of the deprecated infer_datetime_format=True.
     """
     try:
         summary = df.describe(include="all", datetime_is_numeric=True).to_dict()
@@ -139,13 +156,57 @@ def sanitize_for_json(obj):
         pass
     return str(obj)
 
+# ── Backblaze B2 storage ─────────────────────────────────────────────────────
+# FIX: Import from shared utils/b2_client.py instead of maintaining a
+# duplicate singleton here.  file_store.py also imports from there.
+from utils.b2_client import get_b2, b2_available, mime_from_ext, BUCKET
+
+
+def _mime_from_filename(file_name: str) -> str:
+    ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+    return mime_from_ext(ext)
+
+
+def _store_to_b2(file_name: str, content: bytes) -> str | None:
+    """
+    Upload raw file bytes to Backblaze B2.
+    Returns the storage key, or None if B2 is not configured or the upload fails.
+    Key pattern: files/{uuid}/{file_name}
+    """
+    if not b2_available():
+        return None
+    try:
+        storage_key = f"files/{uuid.uuid4()}/{file_name}"
+        get_b2().put_object(
+            Bucket=BUCKET,
+            Key=storage_key,
+            Body=content,
+            ContentType=_mime_from_filename(file_name),
+            Metadata={
+                "original_name": file_name,
+                "uploaded_at":   datetime.utcnow().isoformat(),
+            },
+        )
+        logger.info(f"✅ Stored to B2: {storage_key}")
+        return storage_key
+    except Exception as e:
+        logger.warning(f"B2 store failed (non-fatal): {e}")
+        return None
+
 # ── File processor ────────────────────────────────────────────────────────────
 
 async def process_file(file: UploadFile, plan: str = "free") -> Dict[str, Any]:
-    if file.content_type not in READERS:
+    # FIX: fall back to extension-based reader for application/octet-stream
+    # (common when uploading via mobile, Postman, or drag-and-drop on some
+    # browsers) so valid CSV/XLSX files are never silently rejected.
+    reader = READERS.get(file.content_type)
+    if reader is None:
+        ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+        reader = _EXT_READERS.get(ext)
+    if reader is None:
         return sanitize_for_json({
             "file_name": file.filename,
-            "error": f"Unsupported file type: {file.content_type}",
+            "error": f"Unsupported file type: {file.content_type}. Supported: CSV, XLSX, JSON.",
         })
 
     try:
@@ -162,15 +223,14 @@ async def process_file(file: UploadFile, plan: str = "free") -> Dict[str, Any]:
             })
 
         buffer = io.BytesIO(content)
-        df = READERS[file.content_type](buffer)
+        df = reader(buffer)
 
         if df.empty:
             return sanitize_for_json({"file_name": file.filename, "error": "File is empty"})
 
         if plan == "free" and len(df) > MAX_ROWS_FREE:
             df = df.sample(MAX_ROWS_FREE, random_state=42).reset_index(drop=True)
-            import logging as _log
-            _log.getLogger(__name__).warning(
+            logger.warning(
                 f"Free plan: dataset sampled to {MAX_ROWS_FREE} rows ({file.filename})"
             )
 
@@ -222,16 +282,20 @@ async def process_file(file: UploadFile, plan: str = "free") -> Dict[str, Any]:
     except Exception:
         USER_STATS["total_rows_processed"] = int(row_count)
 
+    # Store raw file to B2 for cross-device session restore
+    storage_key = _store_to_b2(file.filename, content)
+
     result = {
-        "file_name":      file.filename,
-        "session_id":     session_id,
-        "columns":        columns,
-        "summary":        summary,
-        "sample":         sample_rows,
-        "row_count":      row_count,
+        "file_name":            file.filename,
+        "session_id":           session_id,
+        "columns":              columns,
+        "summary":              summary,
+        "sample":               sample_rows,
+        "row_count":            row_count,
         "total_rows_processed": USER_STATS.get("total_rows_processed", 0),
-        "uploaded_at":    DATA_CACHE[session_id]["uploaded_at"],
-        "expiry_minutes": expiry_minutes,
+        "uploaded_at":          DATA_CACHE[session_id]["uploaded_at"],
+        "expiry_minutes":       expiry_minutes,
+        "storage_key":          storage_key,   # None when B2 is not configured
     }
 
     return sanitize_for_json(result)

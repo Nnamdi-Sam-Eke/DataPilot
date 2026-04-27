@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 from routers import upload, insights, plots, codegen
 from routers.clean import router as clean_router
+from routers.file_store import router as file_store_router
 try:
     from routers import train, predict, report
     _has_train = True
@@ -63,7 +64,7 @@ async def cleanup_expired_sessions():
             # ── Evict expired DATA_CACHE sessions ────────────────────────
             expired = [
                 sid for sid, session in DATA_CACHE.items()
-                if datetime.utcnow() - session["created_at"] > timedelta(
+                if datetime.utcnow() - (session.get("last_accessed") or session["created_at"]) > timedelta(
                     minutes=session.get("expiry_minutes", 180)
                 )
             ]
@@ -99,7 +100,7 @@ async def cleanup_expired_sessions():
                     from routers.train import MODEL_STORE, MAX_MODELS
                 except Exception:
                     from routers.train import MODEL_STORE
-                    MAX_MODELS = 5
+                    MAX_MODELS = 4
 
                 expired_models = [
                     mid for mid, m in MODEL_STORE.items()
@@ -144,7 +145,7 @@ async def cleanup_expired_sessions():
         except Exception as e:
             logger.error(f"Error during session cleanup: {e}")
 
-        await asyncio.sleep(300)   # every 5 minutes
+        await asyncio.sleep(120)   # every 2 minutes
 
 # ================= LIFESPAN =================
 @asynccontextmanager
@@ -394,7 +395,8 @@ async def cache_stats():
 
     for session_id, session in DATA_CACHE.items():
         expiry_min = session.get("expiry_minutes", EXPIRY_MINUTES)
-        if datetime.utcnow() - session["created_at"] > timedelta(minutes=expiry_min):
+        last_touch = session.get("last_accessed") or session["created_at"]
+        if datetime.utcnow() - last_touch > timedelta(minutes=expiry_min):
             expired_sessions += 1
         else:
             active_sessions += 1
@@ -427,6 +429,7 @@ app.include_router(insights.router, prefix="/insights", tags=["Insights"])
 app.include_router(plots.router, prefix="/plots", tags=["Plots"])
 app.include_router(codegen.router, prefix="/codegen", tags=["CodeGen"])
 app.include_router(clean_router, tags=["Clean"])
+app.include_router(file_store_router, tags=["Storage"])
 
 if _has_train:
     app.include_router(train.router,   prefix="/train",   tags=["Train"])
