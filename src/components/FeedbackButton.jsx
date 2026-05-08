@@ -54,7 +54,7 @@ export default function FeedbackButton() {
     formData.append("message",  feedback);
 
     try {
-      const res = await fetch("https://formspree.io/f/xeornyen", {
+      const res = await fetch("https://formspree.io/f/mgodnyqa", {
         method:  "POST",
         body:    formData,
         headers: { Accept: "application/json" },
