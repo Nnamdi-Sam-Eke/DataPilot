@@ -24,6 +24,7 @@ import { saveUserProfile }      from "./services/firestore";
 import { styles }               from "./styles.jsx";
 import { DataPilotProvider, useDataPilot, API_BASE } from "./DataPilotContext.jsx";
 import ApiFallback from "./components/ApiFallback.jsx";
+import FeedbackButton from "./components/FeedbackButton";
 import Sidebar      from "./components/Sidebar.jsx";
 import Topbar       from "./components/Topbar.jsx";
 import PageAuth     from "./pages/PageAuth.jsx";
@@ -467,6 +468,7 @@ function AppShell() {
 
     return (
       <>
+        {user && <FeedbackButton />}
         <style>{styles}</style>
         <OfflinePopup
           open={isOffline}
