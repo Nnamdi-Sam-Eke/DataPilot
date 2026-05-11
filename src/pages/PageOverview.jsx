@@ -3,19 +3,23 @@ import { SparkBar } from "../shared/charts.jsx";
 import { Icons } from "../shared/icons.jsx";
 import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";   // ← Fixed import
 
+// DataPilot "Aura" palette — dark-first, matches the purple-accent design system.
+//   +1.0  →  rgb(210,  50,  50)  deep crimson (strong positive)
+//    0    →  rgb(50,  55,  88)   dark blue-purple (visible but recedes into the theme)
+//   -1.0  →  rgb(78, 108, 228)   royal/periwinkle blue (strong negative)
+const HEAT_BASE = { r: 50,  g: 55,  b: 88  };
+const HEAT_POS  = { r: 210, g: 50,  b: 50  };
+const HEAT_NEG  = { r: 78,  g: 108, b: 228 };
+
 function heatColor(v) {
   if (v === null || v === undefined || isNaN(v)) return "var(--bg3)";
   const value = Math.max(-1, Math.min(1, v));
   const lerp  = (a, b, t) => Math.round(a + (b - a) * t);
-  const base  = { r: 35, g: 40, b: 72 };
-  if (value >= 0) {
-    const hi = { r: 78, g: 108, b: 228 };
-    return `rgb(${lerp(base.r,hi.r,value)},${lerp(base.g,hi.g,value)},${lerp(base.b,hi.b,value)})`;
-  }
-  const hi = { r: 208, g: 52, b: 52 };
-  const t  = -value;
-  return `rgb(${lerp(base.r,hi.r,t)},${lerp(base.g,hi.g,t)},${lerp(base.b,hi.b,t)})`;
+  const hi    = value >= 0 ? HEAT_POS : HEAT_NEG;
+  const t     = Math.abs(value);
+  return `rgb(${lerp(HEAT_BASE.r,hi.r,t)},${lerp(HEAT_BASE.g,hi.g,t)},${lerp(HEAT_BASE.b,hi.b,t)})`;
 }
+// All anchors are dark — white text is always readable
 function getTextColor() { return "#ffffff"; }
 
 function parseNum(v) {
@@ -336,11 +340,11 @@ export default function PageOverview({ setPage }) {
               margin: 0 auto on the inner grid centers when there's room, scrolls from
               the left edge when it needs to. */}
           <div style={{ overflowX: "auto", padding: "8px 0" }}>
+            <div style={{ display: "inline-flex", alignItems: "flex-start", margin: "0 auto" }}>
             <div style={{
               display: "inline-grid",
               gridTemplateColumns: `56px repeat(${heatCols.length}, 28px)`,
               gap: "1px",
-              margin: "0 auto",
             }}>
               {/* Top-left spacer */}
               <div />
@@ -420,11 +424,45 @@ export default function PageOverview({ setPage }) {
                   })}
                 </React.Fragment>
               ))}
-            </div>
-          </div>
+              </div>
 
-          <div style={{ textAlign: "center", marginTop: 6, fontSize: "10px", color: "var(--text3)" }}>
-            Blue = Strong Positive · Red = Strong Negative
+              {/* ── Colorbar ── */}
+              <div style={{ paddingTop: "64px", paddingLeft: "10px", flexShrink: 0 }}>
+                <div style={{ position: "relative", display: "inline-block" }}>
+                  <div style={{
+                    width: "12px",
+                    height: `${heatCols.length * 29 - 1}px`,
+                    borderRadius: "6px",
+                    background: `linear-gradient(to bottom,
+                      rgb(${HEAT_POS.r},${HEAT_POS.g},${HEAT_POS.b}),
+                      rgb(${HEAT_BASE.r},${HEAT_BASE.g},${HEAT_BASE.b}),
+                      rgb(${HEAT_NEG.r},${HEAT_NEG.g},${HEAT_NEG.b}))`,
+                  }} />
+                  {[
+                    { label: "+1.0", pos: 0    },
+                    { label: "+0.5", pos: 0.25 },
+                    { label:  "0.0", pos: 0.5  },
+                    { label: "\u22120.5", pos: 0.75 },
+                    { label: "\u22121.0", pos: 1.0  },
+                  ].map(({ label, pos }) => (
+                    <div key={label} style={{
+                      position: "absolute",
+                      top: `${pos * (heatCols.length * 29 - 1)}px`,
+                      left: "14px",
+                      transform: "translateY(-50%)",
+                      display: "flex", alignItems: "center", gap: "3px",
+                    }}>
+                      <div style={{ width: "4px", height: "1px", background: "var(--text3)" }} />
+                      <span style={{
+                        fontSize: "8px", fontFamily: "'DM Mono', monospace",
+                        color: "var(--text3)", whiteSpace: "nowrap", lineHeight: 1,
+                      }}>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
           </div>
         </div>
       )}
