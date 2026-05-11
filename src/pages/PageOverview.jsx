@@ -1,22 +1,29 @@
-import { useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { SparkBar } from "../shared/charts.jsx";
 import { Icons } from "../shared/icons.jsx";
-import { useDataPilot } from "../DataPilotContext.jsx";
+import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";   // ← Fixed import
 
 function heatColor(v) {
-  if (v >=  0.8) return "rgba(108,99,255,0.85)";
-  if (v >=  0.5) return "rgba(108,99,255,0.55)";
-  if (v >=  0.2) return "rgba(108,99,255,0.28)";
-  if (v >= -0.2) return "rgba(255,255,255,0.05)";
-  if (v >= -0.5) return "rgba(248,113,113,0.28)";
-  return             "rgba(248,113,113,0.55)";
+  if (v === null || v === undefined || isNaN(v)) return "var(--bg3)";
+  const value = Math.max(-1, Math.min(1, v));
+  const lerp  = (a, b, t) => Math.round(a + (b - a) * t);
+  const base  = { r: 35, g: 40, b: 72 };
+  if (value >= 0) {
+    const hi = { r: 78, g: 108, b: 228 };
+    return `rgb(${lerp(base.r,hi.r,value)},${lerp(base.g,hi.g,value)},${lerp(base.b,hi.b,value)})`;
+  }
+  const hi = { r: 208, g: 52, b: 52 };
+  const t  = -value;
+  return `rgb(${lerp(base.r,hi.r,t)},${lerp(base.g,hi.g,t)},${lerp(base.b,hi.b,t)})`;
 }
+function getTextColor() { return "#ffffff"; }
 
 function parseNum(v) {
   if (v === null || v === undefined) return null;
   const n = parseFloat(v);
   return isNaN(n) ? null : n;
 }
+
 
 // Build sparkbar values from a column's summary (min/mean/max → fake distribution shape)
 function summaryToSparkValues(s, len = 12) {
@@ -52,6 +59,7 @@ function getBinaryDistribution(summary) {
   return null;
 }
 
+
 function NextStepBar({ label, to, setPage, note }) {
   return (
     <div style={{ marginTop: 28, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderRadius: 12, background: "var(--bg3)", border: "1px solid var(--border2)" }}>
@@ -66,6 +74,24 @@ function NextStepBar({ label, to, setPage, note }) {
 
 export default function PageOverview({ setPage }) {
   const { summary, columns, fileName, rowCount, sessionId, activeSessionExpired } = useDataPilot();
+  const [correlationMatrix, setCorrelationMatrix] = useState(null);
+ 
+  // ── Fetch Real Correlation Matrix ─────────────────────────────────────
+  useEffect(() => {
+    if (!sessionId || activeSessionExpired) return;
+
+    fetch(`${API_BASE}/clean/${sessionId}/correlation`, { 
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && !data.error) {
+          setCorrelationMatrix(data.matrix);
+        }
+      })
+      .catch(() => {});
+  }, [sessionId, activeSessionExpired]);
 
   // ── Derived stats ──────────────────────────────────────────────────────────
   const numericCols = useMemo(() =>
@@ -73,7 +99,10 @@ export default function PageOverview({ setPage }) {
 
   const categoricalCols = useMemo(() =>
     columns.filter(c => summary?.[c]?.top !== undefined), [summary, columns]);
-
+  
+  const heatCols = correlationMatrix
+    ? Object.keys(correlationMatrix).slice(0, 12)
+    : numericCols.slice(0, 12);
   const { totalMissing, missingPct } = useMemo(() => {
     if (!summary || !rowCount || !columns.length) return { totalMissing: 0, missingPct: "0%" };
     let missing = 0;
@@ -120,10 +149,7 @@ export default function PageOverview({ setPage }) {
   // ── Binary column → donut ─────────────────────────────────────────────────
   const binaryDist = useMemo(() => getBinaryDistribution(summary), [summary]);
 
-  // ── Correlation matrix (if backend provided it — otherwise skip) ──────────
-  // The backend /report endpoint provides correlations; here we derive from summary
-  // For now, show the matrix only if we have numeric cols
-  const heatCols = numericCols.slice(0, 7);
+ 
 
   // ── Stats cards ───────────────────────────────────────────────────────────
   const statCards = [
@@ -294,6 +320,114 @@ export default function PageOverview({ setPage }) {
         </div>
       </div>
 
+
+           {/* REAL CORRELATION HEATMAP - Compact Image-like Style */}
+      {heatCols.length >= 2 && correlationMatrix && (
+        <div className="card mb-5 fade-up fade-up-2">
+          <div className="card-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d={Icons.grid} />
+            </svg>
+            Correlation Heatmap
+            <span className="tag tag-blue" style={{ marginLeft: "auto" }}>Numeric Columns Only</span>
+          </div>
+
+          {/* overflow-x: auto WITHOUT justify-content: center avoids the left-clip trap.
+              margin: 0 auto on the inner grid centers when there's room, scrolls from
+              the left edge when it needs to. */}
+          <div style={{ overflowX: "auto", padding: "8px 0" }}>
+            <div style={{
+              display: "inline-grid",
+              gridTemplateColumns: `56px repeat(${heatCols.length}, 28px)`,
+              gap: "1px",
+              margin: "0 auto",
+            }}>
+              {/* Top-left spacer */}
+              <div />
+
+              {/* Column headers — rotated */}
+              {heatCols.map(col => (
+                <div key={`h-${col}`} style={{
+                  width: "28px",
+                  height: "64px",
+                  display: "flex",
+                  alignItems: "flex-end",
+                  justifyContent: "center",
+                  paddingBottom: "4px",
+                  writingMode: "vertical-rl",
+                  transform: "rotate(180deg)",
+                  fontSize: "9.5px",
+                  fontWeight: 600,
+                  color: "var(--text2)",
+                  overflow: "hidden",
+                  whiteSpace: "nowrap",
+                }}>
+                  {col.length > 10 ? col.slice(0, 9) + "…" : col}
+                </div>
+              ))}
+
+              {/* Rows */}
+              {heatCols.map(rowCol => (
+                <React.Fragment key={rowCol}>
+                  {/* Row label */}
+                  <div style={{
+                    width: "56px",
+                    height: "28px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                    paddingRight: "6px",
+                    fontWeight: 600,
+                    fontSize: "9.5px",
+                    color: "var(--text)",
+                    overflow: "hidden",
+                    whiteSpace: "nowrap",
+                    textOverflow: "ellipsis",
+                  }}>
+                    {rowCol.length > 8 ? rowCol.slice(0, 7) + "…" : rowCol}
+                  </div>
+
+                  {/* Cells */}
+                  {heatCols.map(colCol => {
+                    const raw   = correlationMatrix?.[rowCol]?.[colCol];
+                    const value = typeof raw === "number" ? raw : (rowCol === colCol ? 1.0 : 0.0);
+                    return (
+                      <div
+                        key={`${rowCol}-${colCol}`}
+                        style={{
+                          width: "28px",
+                          height: "28px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: heatColor(value),
+                          color: "#fff",
+                          fontSize: "7.5px",
+                          fontFamily: "'DM Mono', monospace",
+                          fontWeight: 700,
+                          borderRadius: "2px",
+                          cursor: "pointer",
+                          transition: "transform 0.1s ease",
+                          letterSpacing: "-0.3px",
+                        }}
+                        title={`${rowCol} ↔ ${colCol}: ${value.toFixed(3)}`}
+                        onMouseEnter={e => e.currentTarget.style.transform = "scale(1.25)"}
+                        onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
+                      >
+                        {value.toFixed(2)}
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ textAlign: "center", marginTop: 6, fontSize: "10px", color: "var(--text3)" }}>
+            Blue = Strong Positive · Red = Strong Negative
+          </div>
+        </div>
+      )}
       {/* ── Correlation Heatmap (inline — based on column names, values from summary) ── */}
       {heatCols.length >= 2 && (
         <div className="card mb-5 fade-up fade-up-2">

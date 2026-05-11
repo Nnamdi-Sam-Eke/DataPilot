@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";
 import { Icons } from "../shared/icons.jsx";
 
@@ -572,6 +572,24 @@ export default function PageCodeGen({ setPage }) {
   const hasModel   = !!trainConfig?.targetCol;
   const hasViz     = Array.isArray(savedPlots) && savedPlots.filter(p => p.image).length > 0;
 
+  // ── format-tab scroll ──────────────────────────────────────────────────────
+  const tabBarRef = useRef(null);
+  const tabDrag   = useRef(null);
+
+  const updateArrowVisibility = useCallback(() => {
+    const el = tabBarRef.current;
+    if (!el) return;
+    const left  = document.getElementById("cg-tab-scroll-left");
+    const right = document.getElementById("cg-tab-scroll-right");
+    if (left)  left.style.opacity  = el.scrollLeft > 0 ? "1" : "0.4";
+    if (right) right.style.opacity =
+      el.scrollLeft < el.scrollWidth - el.clientWidth - 10 ? "1" : "0.4";
+  }, []);
+
+  useEffect(() => {
+    updateArrowVisibility();
+  }, [updateArrowVisibility]);
+
   const sectionAvailability = {
     load:          hasData,
     cleaning:      hasData,
@@ -738,10 +756,53 @@ export default function PageCodeGen({ setPage }) {
         <div style={{ display:"flex", flexDirection:"column", gap:0, minWidth:0 }}>
 
           {/* format tabs */}
-          <div className="codegen-tabs" style={{ display:"flex", borderBottom:"1px solid var(--border)", background:"var(--bg2)", borderRadius:"14px 14px 0 0" }}>
-            <FormatTab id="py"    label="Python Script"   icon={<IcoPy />}   ext=".py"    active={format==="py"}    onClick={setFormat} />
-            <FormatTab id="ipynb" label="Jupyter Notebook" icon={<IcoNb />}  ext=".ipynb" active={format==="ipynb"} onClick={setFormat} />
-            <FormatTab id="md"    label="Markdown Report" icon={<IcoMd />}   ext=".md"    active={format==="md"}    onClick={setFormat} />
+          <div style={{ display:"flex", alignItems:"center", borderBottom:"1px solid var(--border)", background:"var(--bg2)", borderRadius:"14px 14px 0 0" }}>
+
+            {/* LEFT ARROW */}
+            <button
+              id="cg-tab-scroll-left"
+              onClick={() => tabBarRef.current?.scrollBy({ left: -180, behavior: "smooth" })}
+              style={{ padding:"12px 8px", background:"none", border:"none", cursor:"pointer", color:"var(--text3)", flexShrink:0, opacity:0.4, transition:"opacity 0.2s ease" }}
+              onMouseEnter={e => e.currentTarget.style.opacity = "1"}
+              onMouseLeave={e => e.currentTarget.style.opacity = "0.4"}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+
+            {/* Scrollable tabs */}
+            <div
+              className="codegen-tabs"
+              style={{ flex:1, display:"flex", overflowX:"auto", whiteSpace:"nowrap", scrollbarWidth:"none", msOverflowStyle:"none", cursor:"grab", scrollBehavior:"smooth" }}
+              ref={tabBarRef}
+              onScroll={updateArrowVisibility}
+              onMouseDown={e => {
+                tabDrag.current = { active:true, startX: e.pageX - tabBarRef.current.offsetLeft, scrollLeft: tabBarRef.current.scrollLeft };
+                tabBarRef.current.style.cursor = "grabbing";
+              }}
+              onMouseLeave={() => { if (tabDrag.current?.active) { tabDrag.current.active = false; tabBarRef.current.style.cursor = "grab"; } }}
+              onMouseUp={()    => { if (tabDrag.current)         { tabDrag.current.active = false; tabBarRef.current.style.cursor = "grab"; } }}
+              onMouseMove={e  => {
+                if (!tabDrag.current?.active) return;
+                e.preventDefault();
+                tabBarRef.current.scrollLeft = tabDrag.current.scrollLeft - (e.pageX - tabBarRef.current.offsetLeft - tabDrag.current.startX);
+              }}
+            >
+              <FormatTab id="py"    label="Python Script"   icon={<IcoPy />}  ext=".py"    active={format==="py"}    onClick={setFormat} />
+              <FormatTab id="ipynb" label="Jupyter Notebook" icon={<IcoNb />} ext=".ipynb" active={format==="ipynb"} onClick={setFormat} />
+              <FormatTab id="md"    label="Markdown Report" icon={<IcoMd />}  ext=".md"    active={format==="md"}    onClick={setFormat} />
+            </div>
+
+            {/* RIGHT ARROW */}
+            <button
+              id="cg-tab-scroll-right"
+              onClick={() => tabBarRef.current?.scrollBy({ left: 180, behavior: "smooth" })}
+              style={{ padding:"12px 8px", background:"none", border:"none", cursor:"pointer", color:"var(--text3)", flexShrink:0, opacity:0.4, transition:"opacity 0.2s ease" }}
+              onMouseEnter={e => e.currentTarget.style.opacity = "1"}
+              onMouseLeave={e => e.currentTarget.style.opacity = "0.4"}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+
           </div>
 
           {/* description bar */}
