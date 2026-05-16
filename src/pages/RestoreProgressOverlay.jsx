@@ -211,7 +211,7 @@ export default function RestoreProgressOverlay({ progress }) {
       const t = setTimeout(() => {
         setVisible(false);
         setClosing(false);
-      }, 500);
+      }, 1000);
       return () => clearTimeout(t);
     }
   }, [active]); // eslint-disable-line react-hooks/exhaustive-deps

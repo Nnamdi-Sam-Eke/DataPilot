@@ -591,9 +591,19 @@ if (user?.uid) {
                       })()}
 
                       <button
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
-                          removeSession(realIdx);
+                          await removeSession(realIdx);
+                          if (user?.uid) {
+                            const deleted = sessions[realIdx];
+                            if (deleted) {
+                              logActivity(user.uid, {
+                                action: "Dataset deleted",
+                                detail: deleted.fileName || "Untitled dataset",
+                                color: "var(--red)",
+                              });
+                            }
+                          }
                         }}
                         style={{
                           background: "none",
