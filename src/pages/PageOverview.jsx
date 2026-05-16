@@ -3,24 +3,34 @@ import { SparkBar } from "../shared/charts.jsx";
 import { Icons } from "../shared/icons.jsx";
 import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";   // ← Fixed import
 
-// DataPilot "Aura" palette — dark-first, matches the purple-accent design system.
-//   +1.0  →  rgb(210,  50,  50)  deep crimson (strong positive)
-//    0    →  rgb(50,  55,  88)   dark blue-purple (visible but recedes into the theme)
-//   -1.0  →  rgb(78, 108, 228)   royal/periwinkle blue (strong negative)
-const HEAT_BASE = { r: 50,  g: 55,  b: 88  };
-const HEAT_POS  = { r: 210, g: 50,  b: 50  };
-const HEAT_NEG  = { r: 78,  g: 108, b: 228 };
+// Sequential heatmap — yellow (1.0) → green (0.5) → dark teal (0 and below).
+// Matches the matplotlib YlGn-style palette in the reference image.
+// Negatives and near-zero both map to dark teal — the yellow/green only
+// appears for meaningfully positive correlations, making the diagonal pop.
 
 function heatColor(v) {
   if (v === null || v === undefined || isNaN(v)) return "var(--bg3)";
   const value = Math.max(-1, Math.min(1, v));
   const lerp  = (a, b, t) => Math.round(a + (b - a) * t);
-  const hi    = value >= 0 ? HEAT_POS : HEAT_NEG;
-  const t     = Math.abs(value);
-  return `rgb(${lerp(HEAT_BASE.r,hi.r,t)},${lerp(HEAT_BASE.g,hi.g,t)},${lerp(HEAT_BASE.b,hi.b,t)})`;
+
+  // Treat anything ≤ 0 as the dark-teal floor; only positives get colour
+  const t = Math.max(0, value); // 0..1
+
+  if (t <= 0.5) {
+    // dark teal → green
+    const u = t / 0.5;
+    return `rgb(${lerp(15,100,u)},${lerp(85,190,u)},${lerp(100,80,u)})`;
+  } else {
+    // green → yellow
+    const u = (t - 0.5) / 0.5;
+    return `rgb(${lerp(100,255,u)},${lerp(190,255,u)},${lerp(80,60,u)})`;
+  }
 }
-// All anchors are dark — white text is always readable
-function getTextColor() { return "#ffffff"; }
+// Dark text on bright yellow/green cells; white on dark teal
+function getTextColor(v) {
+  if (v === null || v === undefined || isNaN(v)) return "#ffffff";
+  return v > 0.45 ? "#1a2a1a" : "#ffffff";
+}
 
 function parseNum(v) {
   if (v === null || v === undefined) return null;
@@ -84,9 +94,8 @@ export default function PageOverview({ setPage }) {
   useEffect(() => {
     if (!sessionId || activeSessionExpired) return;
 
-    fetch(`${API_BASE}/clean/${sessionId}/correlation`, { 
-      method: "POST",
-      headers: { "Content-Type": "application/json" }
+    fetch(`${API_BASE}/data/${sessionId}/correlation`, {
+      method: "GET",
     })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
@@ -405,7 +414,7 @@ export default function PageOverview({ setPage }) {
                           alignItems: "center",
                           justifyContent: "center",
                           backgroundColor: heatColor(value),
-                          color: "#fff",
+                          color: getTextColor(value),
                           fontSize: "7.5px",
                           fontFamily: "'DM Mono', monospace",
                           fontWeight: 700,
@@ -434,9 +443,9 @@ export default function PageOverview({ setPage }) {
                     height: `${heatCols.length * 29 - 1}px`,
                     borderRadius: "6px",
                     background: `linear-gradient(to bottom,
-                      rgb(${HEAT_POS.r},${HEAT_POS.g},${HEAT_POS.b}),
-                      rgb(${HEAT_BASE.r},${HEAT_BASE.g},${HEAT_BASE.b}),
-                      rgb(${HEAT_NEG.r},${HEAT_NEG.g},${HEAT_NEG.b}))`,
+                      rgb(255,255,60),
+                      rgb(100,190,80),
+                      rgb(15,85,100))`,
                   }} />
                   {[
                     { label: "+1.0", pos: 0    },

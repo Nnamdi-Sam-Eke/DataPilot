@@ -2,6 +2,48 @@ import { useState, useEffect, useRef } from "react";
 import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";
 import { Icons } from "../shared/icons.jsx";
 
+// ── Promote button attention animation ───────────────────────────────────────
+const PROMOTE_STYLE_ID = "promote-btn-keyframes";
+function injectPromoteKeyframes() {
+  if (document.getElementById(PROMOTE_STYLE_ID)) return;
+  const s = document.createElement("style");
+  s.id = PROMOTE_STYLE_ID;
+  s.textContent = `
+    @keyframes _pb_shimmer {
+      0%   { background-position: -300% center; }
+      100% { background-position:  300% center; }
+    }
+    @keyframes _pb_glow {
+      0%, 100% { box-shadow: 0 0 6px 1px rgba(108,99,255,0.4), 0 0 0 0 rgba(108,99,255,0); }
+      50%       { box-shadow: 0 0 18px 4px rgba(108,99,255,0.75), 0 0 0 6px rgba(108,99,255,0.12); }
+    }
+    @keyframes _pb_bounce {
+      0%, 100% { transform: translateY(0)    scale(1);    }
+      30%       { transform: translateY(-4px) scale(1.04); }
+      60%       { transform: translateY(-1px) scale(1.01); }
+    }
+    .promote-attention {
+      background: linear-gradient(
+        90deg,
+        var(--accent, #6c63ff) 0%,
+        #a78bfa 30%,
+        #fff 50%,
+        #a78bfa 70%,
+        var(--accent, #6c63ff) 100%
+      ) !important;
+      background-size: 300% auto !important;
+      animation:
+        _pb_shimmer 2.2s linear infinite,
+        _pb_glow    1.8s ease-in-out infinite,
+        _pb_bounce  2.8s ease-in-out infinite !important;
+      color: #fff !important;
+      border: none !important;
+      position: relative;
+    }
+  `;
+  document.head.appendChild(s);
+}
+
 // ── icons ─────────────────────────────────────────────────────────────────────
 const IcoWand    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 4V2m0 14v-2M8 9H2m14 0h-2M4.22 4.22l1.42 1.42M17.36 17.36l1.42 1.42M17.36 6.64l1.42-1.42M4.22 19.78l1.42-1.42"/><circle cx="12" cy="12" r="3"/></svg>;
 const IcoTrash   = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>;
@@ -209,6 +251,7 @@ function NextStepBar({ label, to, setPage, note }) {
 
 // ── main component ────────────────────────────────────────────────────────────
 export default function PageCleaning({ setPage }) {
+  injectPromoteKeyframes();
   const {
     sessionId, columns, summary, fileName, rowCount,
     setColumns, setSummary, setRowCount,
@@ -530,7 +573,11 @@ export default function PageCleaning({ setPage }) {
         </div>
         <div className="clean-header-btns">
           {opLog.length > 0 && !promoted && (
-            <button className="btn-primary" onClick={handlePromote} disabled={promoting}>
+            <button
+              className={`btn-primary${promoting ? "" : " promote-attention"}`}
+              onClick={handlePromote}
+              disabled={promoting}
+            >
               {promoting
                 ? <svg className="spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg>
                 : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>}

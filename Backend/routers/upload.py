@@ -300,6 +300,53 @@ async def process_file(file: UploadFile, plan: str = "free") -> Dict[str, Any]:
 
     return sanitize_for_json(result)
 
+# ── Correlation Matrix ────────────────────────────────────────────────────────
+
+@router.get("/data/{session_id}/correlation")
+def get_correlation(session_id: str):
+    """
+    Return Pearson correlation matrix for numeric columns only.
+    Reads from the original uploaded DATA_CACHE — not the cleaning store —
+    so the result is always based on raw data regardless of cleaning state.
+    Non-numeric columns are excluded entirely (no label encoding).
+    """
+    df = get_session(session_id)
+    if df is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Session not found or expired.")
+
+    # Strict numeric filter — Pearson is only valid for continuous numeric data
+    numeric_df = df.select_dtypes(include="number")
+
+    # Drop constant columns (std == 0) — they produce NaN correlation everywhere
+    numeric_df = numeric_df.loc[:, numeric_df.std() > 0]
+
+    # Cap at 15 columns so the matrix stays readable; prefer columns with
+    # the most variance (most informative) when trimming
+    if len(numeric_df.columns) > 15:
+        top_cols = numeric_df.std().nlargest(15).index
+        numeric_df = numeric_df[top_cols]
+
+    if len(numeric_df.columns) < 2:
+        return {"columns": [], "matrix": {}, "shape": [0, 0],
+                "note": "Fewer than 2 numeric columns — correlation matrix unavailable."}
+
+    corr = numeric_df.corr(method="pearson")
+
+    matrix: dict = {}
+    for row in corr.index:
+        matrix[row] = {}
+        for col in corr.columns:
+            val = corr.loc[row, col]
+            matrix[row][col] = round(float(val), 4) if pd.notna(val) else None
+
+    return {
+        "columns": list(corr.columns),
+        "matrix":  matrix,
+        "shape":   list(corr.shape),
+    }
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.post("/upload")

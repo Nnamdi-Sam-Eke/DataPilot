@@ -70,7 +70,7 @@ export default function ApiFallback({ onClose }) {
           style={{
             position: "absolute",
             inset: 0,
-            background: "rgba(0,0,0,0.45)",
+            background: "var(--overlay-light, rgba(0,0,0,0.45))",
             backdropFilter: "blur(8px)",
           }}
         />
@@ -89,8 +89,8 @@ export default function ApiFallback({ onClose }) {
             background: "var(--bg2, #111214)",
             borderRadius: 18,
             padding: 24,
-            border: "1px solid rgba(255,255,255,0.08)",
-            boxShadow: "0 25px 60px rgba(0,0,0,0.6)",
+            border: "1px solid var(--border-bright, rgba(255,255,255,0.08))",
+            boxShadow: "0 25px 60px var(--overlay-dark, rgba(0,0,0,0.6))",
             display: "flex",
             flexDirection: "column",
             gap: 18,
@@ -99,11 +99,11 @@ export default function ApiFallback({ onClose }) {
           {/* Icon */}
           <div style={{
             width: 50, height: 50, borderRadius: 14,
-            background: "rgba(248,113,113,0.12)",
+            background: "rgba(var(--red), 0.12)",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-              stroke="#f87171" strokeWidth="1.8">
+              stroke="var(--red, #f87171)" strokeWidth="1.8">
               <circle cx="12" cy="12" r="10" />
               <line x1="12" y1="8" x2="12" y2="12" />
               <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -131,13 +131,13 @@ export default function ApiFallback({ onClose }) {
                 padding: "9px 20px",
                 borderRadius: 10,
                 border: "none",
-                background: "#6366f1",
+                background: "var(--accent, #6366f1)",
                 color: "#fff",
                 fontWeight: 600,
                 fontSize: 13,
                 cursor: retrying ? "not-allowed" : "pointer",
                 opacity: retrying ? 0.7 : 1,
-                boxShadow: "0 8px 22px rgba(99,102,241,0.35)",
+                boxShadow: "0 8px 22px var(--accent-glow, rgba(99,102,241,0.35))",
                 transition: "opacity 0.15s ease",
               }}
             >

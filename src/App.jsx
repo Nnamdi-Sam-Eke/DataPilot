@@ -96,9 +96,9 @@ function SessionExpiryBanner() {
   const othersCount = candidates.length - 1;
   const isUrgent    = mins <= 10;
 
-  const bgColor     = isUrgent ? "rgba(220,53,69,0.15)"  : "rgba(255,165,0,0.12)";
-  const borderColor = isUrgent ? "#dc3545"               : "#fd7e14";
-  const iconColor   = isUrgent ? "#ff4d4d"               : "#ffa040";
+  const bgColor     = isUrgent ? "var(--error-bg, rgba(248,113,113,0.15))"  : "var(--warning-bg, rgba(251,191,36,0.12))";
+  const borderColor = isUrgent ? "var(--error-border, #f87171)"               : "var(--warning-border, #fbbf24)";
+  const iconColor   = isUrgent ? "var(--error-text, #ff6b6b)"               : "var(--warning-text, #ffa040)";
   const timeLabel   = mins === 1 ? "1 minute"            : `${mins} minutes`;
 
   const fileLabel = candidates.length === 1
@@ -182,12 +182,12 @@ function ReturnNotificationBanner() {
   if (dismissed || expiredNames.length === 0) return null;
 
   const label = expiredNames.length === 1
-    ? <><strong style={{ color: "#ff4d4d" }}>{expiredNames[0]}</strong> expired while you were away.</>
+    ? <><strong style={{ color: "var(--error-text, #ff6b6b)" }}>{expiredNames[0]}</strong> expired while you were away.</>
     : (
       <>
-        <strong style={{ color: "#ff4d4d" }}>{expiredNames.length} sessions</strong>
+        <strong style={{ color: "var(--error-text, #ff6b6b)" }}>{expiredNames.length} sessions</strong>
         {" expired while you were away: "}
-        <strong style={{ color: "#ff4d4d" }}>{expiredNames.join(", ")}</strong>.
+        <strong style={{ color: "var(--error-text, #ff6b6b)" }}>{expiredNames.join(", ")}</strong>.
       </>
     );
 
@@ -195,16 +195,16 @@ function ReturnNotificationBanner() {
     <div style={{
       display: "flex", alignItems: "center", gap: "0.75rem",
       padding: "0.55rem 1.1rem",
-      background: "rgba(220,53,69,0.1)", borderBottom: "1px solid #dc3545",
+      background: "var(--error-bg, rgba(220,53,69,0.1))", borderBottom: "1px solid var(--error-border, #dc3545)",
       fontSize: "0.82rem", color: "var(--text)", flexShrink: 0,
     }}>
-      <span style={{ color: "#ff4d4d", fontSize: "1rem", flexShrink: 0 }}>⚠️</span>
+      <span style={{ color: "var(--error-text, #ff6b6b)", fontSize: "1rem", flexShrink: 0 }}>⚠️</span>
       <span style={{ flex: 1 }}>
         {label}{" "}
         <button
           onClick={() => navigate("/upload")}
           style={{
-            background: "none", border: "none", color: "#ff6b6b",
+            background: "none", border: "none", color: "var(--error-text, #ff6b6b)",
             cursor: "pointer", padding: 0, fontSize: "inherit",
             textDecoration: "underline", fontWeight: 600,
           }}

@@ -986,66 +986,6 @@ def custom_formula(session_id: str, body: CustomFormulaBody):
     _save_snapshot(session_id, df)
     return {"message": f"Created '{new_name}' using formula: {body.formula}"}
 
-# ── Correlation Matrix ─────────────────────────────────────────────────────
-
-class CorrelationMatrixBody(BaseModel):
-    columns: Optional[List[str]] = None  # Optional: limit to specific columns
-
-
-@router.post("/{session_id}/correlation")
-def get_correlation_matrix(session_id: str, body: CorrelationMatrixBody = None):
-    """
-    Return full Pearson correlation matrix for all columns.
-    Non-numeric columns are label-encoded so every column pair gets a real value.
-    """
-    if body is None:
-        body = CorrelationMatrixBody()
-
-    df = _get_or_init(session_id).copy()
-
-    # Limit to requested columns or all columns (cap at 12 for display)
-    cols = body.columns if body.columns else list(df.columns)
-    cols = cols[:12]
-
-    if len(cols) < 2:
-        return {"error": "Need at least 2 columns.", "matrix": {}, "columns": []}
-
-    # Build an all-numeric frame: numeric cols pass through, everything else label-encoded
-    encoded = pd.DataFrame(index=df.index)
-    for col in cols:
-        if col not in df.columns:
-            continue
-        s = df[col]
-        if pd.api.types.is_numeric_dtype(s):
-            encoded[col] = pd.to_numeric(s, errors="coerce")
-        else:
-            # Label-encode: convert to string, sort categories, assign integers
-            encoded[col] = pd.Categorical(
-                s.astype(str).fillna("__null__")
-            ).codes.astype(float)
-            encoded[col] = encoded[col].replace(-1, np.nan)  # -1 = unseen in some pandas versions
-
-    # Drop columns that are entirely NaN after encoding
-    encoded = encoded.dropna(axis=1, how="all")
-
-    if len(encoded.columns) < 2:
-        return {"error": "Not enough encodable columns.", "matrix": {}, "columns": []}
-
-    corr = encoded.corr(method="pearson")
-
-    # Round and serialise — NaN becomes None (JSON null)
-    matrix: dict = {}
-    for row in corr.index:
-        matrix[row] = {}
-        for col in corr.columns:
-            val = corr.loc[row, col]
-            matrix[row][col] = round(float(val), 4) if pd.notna(val) else None
-
-    return {
-        "columns": list(corr.columns),
-        "matrix": matrix,
-        "shape": list(corr.shape),
-    }
 # ── undo / promote / export ───────────────────────────────────────────────────
 
 @router.post("/{session_id}/undo")

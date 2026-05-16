@@ -156,6 +156,19 @@ export function DataPilotProvider({ children }) {
   const [previewLoading, setPreviewLoadingRaw] = useState(false);
   const [groqKey,        setGroqKeyRaw]        = useState(p?.groqKey || "");
 
+  // ── B2 Restore Progress ───────────────────────────────────────────────
+  // Drives the non-dismissible RestoreProgressOverlay on PageDashboard.
+  // Set active:true before the parallel restore Promise.all, increment
+  // done after each individual restore settles, then flip completed:true.
+  const [restoreProgress, setRestoreProgress] = useState({
+    active:      false,
+    phase:       null,   // "checking" | "restoring"
+    total:       0,
+    done:        0,
+    currentFile: "",
+    completed:   false,
+  });
+
   // Prevents auto-save effects from firing during session restore
   const cloudSyncEnabled = useRef(false);
 
@@ -403,6 +416,18 @@ export function DataPilotProvider({ children }) {
       setUser(firebaseUser);
 
       if (firebaseUser) {
+        // ── Show checking overlay immediately on login ─────────────────────
+        // Flip the overlay on right now — before any awaits — so the user
+        // gets visual feedback within ~2 ms of the auth callback firing.
+        setRestoreProgress({
+          active:      true,
+          phase:       "checking",
+          total:       0,
+          done:        0,
+          currentFile: "",
+          completed:   false,
+        });
+
         // Load profile
         try {
           const userSnap = await getDoc(doc(db, "users", firebaseUser.uid));
@@ -432,6 +457,12 @@ export function DataPilotProvider({ children }) {
           console.error("Failed to load projects:", err);
           markOfflineIfFirestoreErr(err);
         }
+
+        // ── Unblock the UI immediately ─────────────────────────────────────
+        // authLoading only needs to guard "are we logged in?" — not "is B2 done?".
+        // Releasing it here lets the dashboard render at once while the session
+        // restore loop runs behind the RestoreProgressOverlay.
+        setAuthLoading(false);
 
         // Restore & validate sessions
         try {
@@ -475,6 +506,15 @@ export function DataPilotProvider({ children }) {
             return res.json();
           };
 
+          // Overlay is already active (started at auth callback time).
+          // If the user has no datasets at all, nothing to check — dismiss cleanly.
+          if (restoredSessions.length === 0) {
+            setRestoreProgress({ active: false, phase: null, total: 0, done: 0, currentFile: "", completed: false });
+            setSessionsRaw([]);
+            cloudSyncEnabled.current = true;
+            return;
+          }
+
           const validationResults = await Promise.allSettled(
             restoredSessions.map((s) => probeSession(s.sessionId))
           );
@@ -484,6 +524,42 @@ export function DataPilotProvider({ children }) {
           // ask the backend to fetch the file from R2 and recreate the
           // DATA_CACHE session. The frontend just swaps session IDs — no
           // file bytes ever flow through the browser. Works on any device.
+
+          // Count how many sessions actually need a B2 round-trip so we
+          // can show an accurate progress overlay rather than guessing.
+          const sessionsNeedingRestore = restoredSessions.filter((s, i) => {
+            const r = validationResults[i];
+            return (
+              r.status === "rejected" &&
+              r.reason?.code === "SESSION_EXPIRED" &&
+              s.storageKey &&
+              s.id &&
+              firebaseUser?.uid
+            );
+          });
+
+          if (sessionsNeedingRestore.length > 0) {
+            // Transition from "checking" → "restoring" with known total
+            setRestoreProgress({
+              active:      true,
+              phase:       "restoring",
+              total:       sessionsNeedingRestore.length,
+              done:        0,
+              currentFile: sessionsNeedingRestore[0]?.fileName || "",
+              completed:   false,
+            });
+          } else if (restoredSessions.length > 0) {
+            // All sessions were alive — nothing to restore, dismiss immediately
+            setRestoreProgress({
+              active:      false,
+              phase:       null,
+              total:       restoredSessions.length,
+              done:        restoredSessions.length,
+              currentFile: "",
+              completed:   true,
+            });
+          }
+
           const finalSessions = await Promise.all(
             restoredSessions.map(async (s, i) => {
               const result    = validationResults[i];
@@ -498,6 +574,14 @@ export function DataPilotProvider({ children }) {
 
               if (!storageKey || !datasetDocId || !firebaseUser?.uid) {
                 // No R2 file available — user must re-upload manually
+                // Still count this as "processed" so the bar moves
+                setRestoreProgress((prev) => {
+                  const nextDone = prev.done + 1;
+                  const nextFile = sessionsNeedingRestore[nextDone]?.fileName || "";
+                  return prev.active
+                    ? { ...prev, done: nextDone, currentFile: nextFile }
+                    : prev;
+                });
                 return { ...s, expired: true };
               }
 
@@ -524,6 +608,15 @@ export function DataPilotProvider({ children }) {
                   newSessionId
                 );
 
+                // ✅ One file done — advance the progress bar
+                setRestoreProgress((prev) => {
+                  const nextDone = prev.done + 1;
+                  const nextFile = sessionsNeedingRestore[nextDone]?.fileName || "";
+                  return prev.active
+                    ? { ...prev, done: nextDone, currentFile: nextFile }
+                    : prev;
+                });
+
                 return {
                   ...s,
                   sessionId:     newSessionId,
@@ -537,10 +630,31 @@ export function DataPilotProvider({ children }) {
                 };
               } catch (restoreErr) {
                 console.warn(`Auto-restore failed for "${s.fileName}":`, restoreErr);
+                // Count failures too so bar always reaches 100%
+                setRestoreProgress((prev) => {
+                  const nextDone = prev.done + 1;
+                  const nextFile = sessionsNeedingRestore[nextDone]?.fileName || "";
+                  return prev.active
+                    ? { ...prev, done: nextDone, currentFile: nextFile }
+                    : prev;
+                });
                 return { ...s, expired: true };
               }
             })
           );
+
+          // ── All restores done — flip to success state ──────────────────
+          if (sessionsNeedingRestore.length > 0) {
+            // done is guaranteed to equal total at this point (every branch increments)
+            setRestoreProgress({
+              active:      false,
+              phase:       null,
+              total:       0,
+              done:        0,
+              currentFile: "",
+              completed:   true,
+            });
+          }
 
           // Sessions we couldn't restore stay out of the active list
           const liveSessions = finalSessions.filter((s) => !s.expired);
@@ -639,8 +753,8 @@ export function DataPilotProvider({ children }) {
               try {
                 // Find the original index in restoredSessions to get the correct probe result
                 const origIdx = restoredSessions.findIndex((s) => s.sessionId === first.sessionId);
-                const probeResult = validationResults[origIdx];
-                if (probeResult.status === "fulfilled") {
+                const probeResult = origIdx !== -1 ? validationResults[origIdx] : undefined;
+                if (probeResult?.status === "fulfilled") {
                   const data = probeResult.value;
                   const previewRows = data.data    || [];
                   const previewCols = data.columns || first.columns || [];
@@ -669,9 +783,8 @@ export function DataPilotProvider({ children }) {
         setSessionsRaw([]);
         setActiveIdxRaw(null);
         applyWorkspace(freshWorkspace());
+        setAuthLoading(false);  // not logged in — release immediately
       }
-
-      setAuthLoading(false);
     });
 
     return unsubscribe;
@@ -1067,7 +1180,7 @@ const promoteCleanedSession = useCallback(async (oldSessionId, promoteResponse) 
       }).catch(() => {});
     }
     if (sessionToRemove?.sessionId && user?.uid) {
-      deleteDataset(user.uid, sessionToRemove.sessionId).catch((err) => {
+      deleteDataset(user.uid, sessionToRemove.id, sessionToRemove.projectId || null).catch((err) => {
         console.error("Failed to delete dataset from Firestore:", err);
         try { markOfflineIfFirestoreErr(err); } catch {}
       });
@@ -1188,6 +1301,8 @@ const promoteCleanedSession = useCallback(async (oldSessionId, promoteResponse) 
       setGlobalApiError,
       globalApiRetryKey,
       retryGlobalApi,
+
+      restoreProgress,
 
       reset,
     }),

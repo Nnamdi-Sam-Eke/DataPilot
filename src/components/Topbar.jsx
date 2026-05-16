@@ -154,10 +154,11 @@ export default function Topbar({ page, onMenuClick }) {
           {themeOpen && (
             <div style={{
               position: "absolute", top: "calc(100% + 8px)", right: 0,
-              background: "var(--bg2)", border: "1px solid var(--border)",
+              background: "var(--bg2)", border: "1px solid var(--border-bright)",
               borderRadius: 12, padding: "14px 16px", zIndex: 200,
-              boxShadow: "0 16px 40px rgba(0,0,0,0.5)",
+              boxShadow: "0 16px 40px var(--overlay-dark)",
               display: "flex", flexDirection: "column", gap: 12, minWidth: 180,
+              backdropFilter: "blur(8px)",
             }}>
               {/* Dark / Light toggle */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>

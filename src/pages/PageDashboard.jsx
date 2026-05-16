@@ -4,7 +4,7 @@ import { Icons } from "../shared/icons.jsx";
 import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";
 import * as dashboardService from "../services/dashboard";
 import * as firestoreService from "../services/firestore";
-
+import RestoreProgressOverlay from "./RestoreProgressOverlay.jsx";
 const RESPONSIVE_CSS = `
   @media (max-width: 640px) {
     .dashboard-panels { grid-template-columns: 1fr !important; }
@@ -121,10 +121,12 @@ export default function PageDashboard({ setPage }) {
   userProfile,
   projects,
   setProjects,
-  switchSession,
   sessions,
+  switchSession,
+  removeSession,
   removeProjectSessions,
   resetWorkspaceState,
+  restoreProgress,
 } = useDataPilot();
 
 
@@ -339,21 +341,28 @@ export default function PageDashboard({ setPage }) {
 
   const handleDeleteStandaloneDataset = async (dataset) => {
     if (!user?.uid) return;
-    if (typeof firestoreService.deleteDataset !== "function") {
-      alert("deleteDataset is not exported from services/firestore yet.");
-      return;
-    }
-
     setDeleting(true);
     try {
-      await firestoreService.deleteDataset(user.uid, dataset.id, dataset.projectId || null);
-      // Delete the file from B2 so storage doesn't accumulate orphaned files
-      if (dataset.storageKey) {
-        fetch(`${API_BASE}/file/delete`, {
-          method:  "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ storage_key: dataset.storageKey }),
-        }).catch(() => {});
+      // removeSession handles Firestore delete, B2 delete, backend session
+      // cleanup, workspace cleanup, and context state — single source of truth.
+      const sessionIdx = sessions.findIndex(
+        (s) => s.id === dataset.id || s.sessionId === dataset.sessionId
+      );
+      if (sessionIdx !== -1) {
+        await removeSession(sessionIdx);
+      } else {
+        // Session not in memory (e.g. already expired) — delete Firestore + B2 directly
+        await firestoreService.deleteDataset(user.uid, dataset.id, dataset.projectId || null);
+        if (dataset.id) {
+          firestoreService.deleteWorkspaceData(user.uid, dataset.id).catch(() => {});
+        }
+        if (dataset.storageKey) {
+          fetch(`${API_BASE}/file/delete`, {
+            method:  "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ storage_key: dataset.storageKey }),
+          }).catch(() => {});
+        }
       }
       await logDeleteActivity("Dataset deleted", dataset.fileName || "Untitled dataset");
       setConfirmDelete(null);
@@ -368,21 +377,25 @@ export default function PageDashboard({ setPage }) {
 
   const handleDeleteProjectDataset = async (dataset) => {
     if (!user?.uid) return;
-    if (typeof firestoreService.deleteDataset !== "function") {
-      alert("deleteDataset is not exported from services/firestore yet.");
-      return;
-    }
-
     setDeleting(true);
     try {
-      await firestoreService.deleteDataset(user.uid, dataset.id, dataset.projectId || null);
-      // Delete the file from B2 so storage doesn't accumulate orphaned files
-      if (dataset.storageKey) {
-        fetch(`${API_BASE}/file/delete`, {
-          method:  "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ storage_key: dataset.storageKey }),
-        }).catch(() => {});
+      const sessionIdx = sessions.findIndex(
+        (s) => s.id === dataset.id || s.sessionId === dataset.sessionId
+      );
+      if (sessionIdx !== -1) {
+        await removeSession(sessionIdx);
+      } else {
+        await firestoreService.deleteDataset(user.uid, dataset.id, dataset.projectId || null);
+        if (dataset.id) {
+          firestoreService.deleteWorkspaceData(user.uid, dataset.id).catch(() => {});
+        }
+        if (dataset.storageKey) {
+          fetch(`${API_BASE}/file/delete`, {
+            method:  "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ storage_key: dataset.storageKey }),
+          }).catch(() => {});
+        }
       }
       await logDeleteActivity(
         "Dataset deleted",
@@ -410,7 +423,7 @@ export default function PageDashboard({ setPage }) {
     const activeProjectId = localStorage.getItem("dp_current_project_id");
 
     // Delete all B2 files for datasets in this project before removing Firestore docs
-    const datasetsToDelete = projectDatasets.filter((d) => d.projectId === project.id || !d.projectId);
+    const datasetsToDelete = projectDatasets.filter((d) => d.projectId === project.id);
     datasetsToDelete.forEach((d) => {
       if (d.storageKey) {
         fetch(`${API_BASE}/file/delete`, {
@@ -420,6 +433,15 @@ export default function PageDashboard({ setPage }) {
         }).catch(() => {});
       }
     });
+
+    // Clean up Firestore workspace docs for every dataset in this project
+    await Promise.all(
+      datasetsToDelete.map((d) =>
+        d.id
+          ? firestoreService.deleteWorkspaceData(user.uid, d.id).catch(() => {})
+          : Promise.resolve()
+      )
+    );
 
     await firestoreService.deleteProject(user.uid, project.id);
     await logDeleteActivity("Project deleted", project.name || "Untitled project");
@@ -445,6 +467,9 @@ export default function PageDashboard({ setPage }) {
   return (
     <div className="page-enter">
       <style>{RESPONSIVE_CSS}</style>
+
+      {/* Non-dismissible overlay — visible only when B2 restore is in progress */}
+      <RestoreProgressOverlay progress={restoreProgress} />
 
       <div className="flex items-center justify-between mb-6" style={{ gap: 12, flexWrap: "wrap" }}>
         <div className="page-header" style={{ marginBottom: 0 }}>

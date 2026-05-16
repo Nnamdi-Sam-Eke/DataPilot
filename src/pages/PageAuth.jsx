@@ -4,30 +4,35 @@ import { sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "../services/firebase";
 
 // ── animated grid background (matches app's grid-bg) ─────────────────────────
-const GridBackground = () => (
+const GridBackground = ({ isDark }) => (
   <div style={{
     position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none",
   }}>
     {/* grid lines */}
     <div style={{
       position: "absolute", inset: 0,
-      backgroundImage: `
-        linear-gradient(rgba(108,99,255,0.045) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(108,99,255,0.045) 1px, transparent 1px)
-      `,
+      backgroundImage: isDark
+        ? `linear-gradient(var(--accent-low, rgba(108,99,255,0.045)) 1px, transparent 1px),
+             linear-gradient(90deg, var(--accent-low, rgba(108,99,255,0.045)) 1px, transparent 1px)`
+        : `linear-gradient(var(--accent-dim, rgba(108,99,255,0.08)) 1px, transparent 1px),
+             linear-gradient(90deg, var(--accent-dim, rgba(108,99,255,0.08)) 1px, transparent 1px)`,
       backgroundSize: "40px 40px",
     }} />
     {/* radial glow top-left */}
     <div style={{
       position: "absolute", top: "-20%", left: "-10%",
       width: "60%", height: "60%",
-      background: "radial-gradient(circle, rgba(108,99,255,0.12) 0%, transparent 65%)",
+      background: isDark
+        ? "radial-gradient(circle, var(--accent-dim, rgba(108,99,255,0.12)) 0%, transparent 65%)"
+        : "radial-gradient(circle, var(--accent-dim, rgba(108,99,255,0.08)) 0%, transparent 65%)",
     }} />
     {/* radial glow bottom-right */}
     <div style={{
       position: "absolute", bottom: "-20%", right: "-10%",
       width: "50%", height: "50%",
-      background: "radial-gradient(circle, rgba(167,139,250,0.07) 0%, transparent 65%)",
+      background: isDark
+        ? "radial-gradient(circle, var(--accent-low, rgba(167,139,250,0.07)) 0%, transparent 65%)"
+        : "radial-gradient(circle, var(--accent-low, rgba(167,139,250,0.05)) 0%, transparent 65%)",
     }} />
   </div>
 );
@@ -38,20 +43,20 @@ const Pill = ({ icon, label, sub, delay }) => (
     display: "flex", alignItems: "center", gap: 10,
     padding: "10px 14px",
     background: "rgba(255,255,255,0.03)",
-    border: "1px solid rgba(255,255,255,0.07)",
+    border: "1px solid var(--border, rgba(255,255,255,0.07))",
     borderRadius: 12,
     animation: `fadeSlideUp 0.6s ease ${delay}s both`,
   }}>
     <div style={{
       width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-      background: "rgba(108,99,255,0.12)",
-      border: "1px solid rgba(108,99,255,0.2)",
+      background: "var(--accent-low, rgba(108,99,255,0.12))",
+      border: "1px solid var(--accent-dim, rgba(108,99,255,0.2))",
       display: "flex", alignItems: "center", justifyContent: "center",
       fontSize: 15,
     }}>{icon}</div>
     <div>
-      <div style={{ fontSize: 12.5, fontWeight: 600, color: "#e8eaf0", fontFamily: "'Syne', sans-serif" }}>{label}</div>
-      <div style={{ fontSize: 11, color: "#4a4f62", fontFamily: "'DM Mono', monospace", marginTop: 1 }}>{sub}</div>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text, #e8eaf0)", fontFamily: "'Syne', sans-serif" }}>{label}</div>
+      <div style={{ fontSize: 11, color: "var(--text3, #4a4f62)", fontFamily: "'DM Mono', monospace", marginTop: 1 }}>{sub}</div>
     </div>
   </div>
 );
@@ -60,10 +65,10 @@ const Pill = ({ icon, label, sub, delay }) => (
 const Stat = ({ value, label }) => (
   <div style={{ textAlign: "center" }}>
     <div style={{
-      fontSize: 22, fontWeight: 800, color: "#a78bfa",
+      fontSize: 22, fontWeight: 800, color: "var(--accent2, #a78bfa)",
       fontFamily: "'Syne', sans-serif", lineHeight: 1,
     }}>{value}</div>
-    <div style={{ fontSize: 10.5, color: "#4a4f62", fontFamily: "'DM Mono', monospace", marginTop: 3 }}>{label}</div>
+    <div style={{ fontSize: 10.5, color: "var(--text3, #4a4f62)", fontFamily: "'DM Mono', monospace", marginTop: 3 }}>{label}</div>
   </div>
 );
 
@@ -98,7 +103,7 @@ const Field = ({ id, label, type = "text", value, onChange, placeholder, require
       <label htmlFor={id} style={{
         display: "block", marginBottom: 7,
         fontSize: 12, fontWeight: 500,
-        color: focused ? "#a78bfa" : "#8b90a0",
+        color: focused ? "var(--accent2, #a78bfa)" : "var(--text2, #8b90a0)",
         fontFamily: "'DM Sans', sans-serif",
         transition: "color 0.2s",
         letterSpacing: "0.02em",
@@ -114,9 +119,9 @@ const Field = ({ id, label, type = "text", value, onChange, placeholder, require
             width: "100%",
             padding: isPassword ? "12px 42px 12px 14px" : "12px 14px",
             borderRadius: 10,
-            border: `1px solid ${focused ? "rgba(108,99,255,0.5)" : "rgba(255,255,255,0.07)"}`,
-            background: focused ? "rgba(108,99,255,0.05)" : "rgba(255,255,255,0.03)",
-            color: "#e8eaf0",
+            border: `1px solid ${focused ? "var(--accent-high, rgba(108,99,255,0.5))" : "var(--border, rgba(255,255,255,0.07))"}`,
+            background: focused ? "var(--accent-low, rgba(108,99,255,0.05))" : "rgba(255,255,255,0.03)",
+            color: "var(--text, #e8eaf0)",
             outline: "none",
             fontSize: 13.5,
             fontFamily: "'DM Sans', sans-serif",
@@ -134,13 +139,13 @@ const Field = ({ id, label, type = "text", value, onChange, placeholder, require
               position: "absolute", right: 12, top: "50%",
               transform: "translateY(-50%)",
               background: "none", border: "none", cursor: "pointer",
-              color: focused ? "#a78bfa" : "#4a4f62",
+              color: focused ? "var(--accent2, #a78bfa)" : "var(--text3, #4a4f62)",
               padding: 0, lineHeight: 1,
               transition: "color 0.2s",
               display: "flex", alignItems: "center",
             }}
-            onMouseEnter={e => e.currentTarget.style.color = "#a78bfa"}
-            onMouseLeave={e => e.currentTarget.style.color = focused ? "#a78bfa" : "#4a4f62"}
+            onMouseEnter={e => e.currentTarget.style.color = "var(--accent2, #a78bfa)"}
+            onMouseLeave={e => e.currentTarget.style.color = focused ? "var(--accent2, #a78bfa)" : "var(--text3, #4a4f62)"}
           >
             <EyeIcon visible={showPassword} />
           </button>
@@ -161,9 +166,9 @@ const ThemeToggle = ({ isDark, onToggle }) => (
       zIndex: 10,
       padding: "8px 12px",
       borderRadius: 9999,
-      border: "1px solid rgba(255,255,255,0.1)",
+      border: "1px solid var(--border, rgba(255,255,255,0.1))",
       background: "rgba(255,255,255,0.05)",
-      color: "#e8eaf0",
+      color: "var(--text, #e8eaf0)",
       fontSize: 13,
       display: "flex",
       alignItems: "center",
@@ -179,7 +184,8 @@ const ThemeToggle = ({ isDark, onToggle }) => (
 
 // ── main ──────────────────────────────────────────────────────────────────────
 export default function PageAuth() {
-  const { signup, login } = useDataPilot();
+  const { signup, login, theme, toggleTheme } = useDataPilot();
+  const isDark = theme === "dark";
 
   // mode: "login" | "signup" | "reset"
   const [mode,      setMode]      = useState("login");
@@ -237,31 +243,6 @@ export default function PageAuth() {
     }
   };
 
-  // Theme state
-  const [isDark, setIsDark] = useState(true);
-
-  // Persist theme preference
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("theme");
-    if (savedTheme) {
-      setIsDark(savedTheme === "dark");
-    } else {
-      setIsDark(true); // default to dark
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add("dark");
-      localStorage.setItem("theme", "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-      localStorage.setItem("theme", "light");
-    }
-  }, [isDark]);
-
-  const toggleTheme = () => setIsDark(!isDark);
-
   const isLogin = mode === "login";
   const isReset = mode === "reset";
 
@@ -309,13 +290,13 @@ export default function PageAuth() {
 
       <div style={{
         minHeight: "100vh", display: "flex",
-        background: isDark ? "#07090e" : "#f8f9fc",
-        color: isDark ? "#e8eaf0" : "#1f2937",
+        background: "var(--bg, #07090e)",
+        color: "var(--text, #e8eaf0)",
         position: "relative", overflow: "hidden",
         fontFamily: "'DM Sans', sans-serif",
-        transition: "background 0.3s ease",
+        transition: "background 0.3s ease, color 0.3s ease",
       }}>
-        <GridBackground />
+        <GridBackground isDark={isDark} />
 
         {/* Theme Toggle at the top */}
         <ThemeToggle isDark={isDark} onToggle={toggleTheme} />
@@ -325,7 +306,7 @@ export default function PageAuth() {
           flex: "0 0 52%", display: "flex", flexDirection: "column",
           justifyContent: "space-between", padding: "48px 52px",
           position: "relative", zIndex: 1,
-          borderRight: isDark ? "1px solid rgba(255,255,255,0.05)" : "1px solid rgba(0,0,0,0.06)",
+          borderRight: "1px solid var(--border, rgba(255,255,255,0.05))",
         }}>
           {/* logo */}
           <div style={{
@@ -342,28 +323,28 @@ export default function PageAuth() {
             }}>dp</div>
             <span style={{
               fontSize: 18, fontWeight: 700,
-              color: isDark ? "#e8eaf0" : "#1f2937",
+              color: "var(--text, #e8eaf0)",
               fontFamily: "'Syne', sans-serif",
-            }}>Data<span style={{ color: "#a78bfa" }}>Pilot</span></span>
+            }}>Data<span style={{ color: "var(--accent2, #a78bfa)" }}>Pilot</span></span>
           </div>
 
           {/* headline */}
           <div style={{ animation: "fadeSlideUp 0.6s ease 0.1s both" }}>
             <div style={{
-              fontSize: 11, fontWeight: 600, color: "#6c63ff",
+              fontSize: 11, fontWeight: 600, color: "var(--accent, #6c63ff)",
               fontFamily: "'DM Mono', monospace", letterSpacing: "0.12em",
               textTransform: "uppercase", marginBottom: 16,
             }}>Data Science Platform</div>
             <h1 style={{
               fontSize: "clamp(2rem, 3.2vw, 2.8rem)",
               fontWeight: 800, lineHeight: 1.08,
-              color: isDark ? "#e8eaf0" : "#111827",
+              color: "var(--text, #e8eaf0)",
               fontFamily: "'Syne', sans-serif",
               margin: 0, letterSpacing: "-0.02em",
             }}>
               From raw data<br />
               <span style={{
-                background: "linear-gradient(90deg, #6c63ff, #a78bfa)",
+                background: "linear-gradient(90deg, var(--accent, #6c63ff), var(--accent2, #a78bfa))",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
               }}>to trained model.</span><br />
@@ -371,7 +352,7 @@ export default function PageAuth() {
             </h1>
             <p style={{
               marginTop: 18, fontSize: 14.5, lineHeight: 1.65,
-              color: isDark ? "#4a4f62" : "#6b7280",
+              color: "var(--text3, #4a4f62)",
               maxWidth: 400,
               fontFamily: "'DM Sans', sans-serif",
             }}>
@@ -388,7 +369,7 @@ export default function PageAuth() {
           {/* stats */}
           <div style={{
             display: "flex", gap: 32,
-            paddingTop: 24, borderTop: isDark ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(0,0,0,0.06)",
+            paddingTop: 24, borderTop: "1px solid var(--border, rgba(255,255,255,0.06))",
             animation: "fadeSlideUp 0.6s ease 0.55s both",
           }}>
             <Stat value="9"   label="pages" />
@@ -402,7 +383,7 @@ export default function PageAuth() {
         <div className="auth-split-right" style={{
           flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
           padding: "40px 32px", position: "relative", zIndex: 1,
-          background: isDark ? "transparent" : "#ffffff",
+          background: isDark ? "transparent" : "var(--bg2, #ffffff)",
         }}>
           <div style={{
             width: "100%", maxWidth: 400,
@@ -419,13 +400,13 @@ export default function PageAuth() {
                   style={{
                     display: "flex", alignItems: "center", gap: 6,
                     background: "none", border: "none", cursor: "pointer",
-                    color: isDark ? "#4a4f62" : "#6b7280",
+                    color: "var(--text3, #4a4f62)",
                     fontSize: 12.5, fontFamily: "'DM Sans', sans-serif",
                     padding: 0, marginBottom: 24,
                     transition: "color 0.15s",
                   }}
-                  onMouseEnter={e => e.currentTarget.style.color = "#a78bfa"}
-                  onMouseLeave={e => e.currentTarget.style.color = isDark ? "#4a4f62" : "#6b7280"}
+                  onMouseEnter={e => e.currentTarget.style.color = "var(--accent2, #a78bfa)"}
+                  onMouseLeave={e => e.currentTarget.style.color = "var(--text3, #4a4f62)"}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -438,7 +419,7 @@ export default function PageAuth() {
                 <div style={{ marginBottom: 28 }}>
                   <h2 style={{
                     margin: 0, fontSize: 22, fontWeight: 700,
-                    color: isDark ? "#e8eaf0" : "#111827",
+                    color: "var(--text, #e8eaf0)",
                     fontFamily: "'Syne', sans-serif",
                     letterSpacing: "-0.01em",
                   }}>
@@ -446,7 +427,7 @@ export default function PageAuth() {
                   </h2>
                   <p style={{
                     marginTop: 6, marginBottom: 0, fontSize: 13,
-                    color: isDark ? "#4a4f62" : "#6b7280",
+                    color: "var(--text3, #4a4f62)",
                     fontFamily: "'DM Sans', sans-serif",
                     lineHeight: 1.6,
                   }}>
