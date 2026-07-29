@@ -76,7 +76,7 @@ export default function FeedbackButton() {
   return (
     <>
       {/* ── Floating trigger button ─────────────────────────────────── */}
-      <div style={{
+      <div className="fb-trigger-wrap" style={{
         position: "fixed",
         bottom: 24,
         right: 24,
@@ -121,7 +121,7 @@ export default function FeedbackButton() {
 
       {/* ── Toast ───────────────────────────────────────────────────── */}
       {toast && (
-        <div style={{
+        <div className="fb-toast" style={{
           position:       "fixed",
           bottom:         76,
           right:          24,
@@ -159,7 +159,7 @@ export default function FeedbackButton() {
 
       {/* ── Panel ───────────────────────────────────────────────────── */}
       {open && (
-        <div style={{
+        <div className="fb-panel" style={{
           position:       "fixed",
           bottom:         76,
           right:          24,
@@ -407,6 +407,22 @@ export default function FeedbackButton() {
         @keyframes dp-fade-up {
           from { opacity: 0; transform: translateY(6px); }
           to   { opacity: 1; transform: translateY(0);   }
+        }
+        @media (max-width: 768px) {
+          .fb-trigger-wrap {
+            right: 50% !important;
+            transform: translateX(50%);
+          }
+          .fb-panel {
+            right: 50% !important;
+            transform: translateX(50%);
+            width: min(320px, calc(100vw - 32px)) !important;
+          }
+          .fb-toast {
+            right: 50% !important;
+            transform: translateX(50%);
+            max-width: min(260px, calc(100vw - 32px)) !important;
+          }
         }
       `}</style>
     </>

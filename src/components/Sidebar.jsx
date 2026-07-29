@@ -12,6 +12,7 @@ export const NAV = [
   { id: "predictions",   label: "Predictions",     icon: "sparkle",  group: "analysis"  },
   { id: "report",        label: "Reports",         icon: "file",     group: "analysis"  },
   { id: "codegen",       label: "Code Export",     icon: "code",     group: "analysis"  },
+  { id: "billing",       label: "Billing",         icon: "card",     group: "account"   },
   { id: "settings",      label: "Settings",        icon: "settings", group: "account"   },
 ];
 

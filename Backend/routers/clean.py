@@ -17,6 +17,7 @@ import numpy as np
 import io
 import copy
 import logging
+import ast
 
 router = APIRouter(prefix="/clean", tags=["clean"])
 
@@ -965,9 +966,56 @@ def groupby_aggregate(session_id: str, body: GroupByBody):
     }
 
 
+# ── Custom formula safety ──────────────────────────────────────────────────
+# df.eval(engine='python') is, under the hood, close to real Python eval() —
+# pandas' own docs warn against using it on untrusted input. Rather than
+# trust the string, we pre-validate it against a strict AST whitelist before
+# it ever reaches df.eval: only arithmetic/comparison/boolean operators, bare
+# names (resolved as column refs), literals, and calls to a fixed function
+# allow-list are permitted. Attribute access, subscripting, lambdas,
+# comprehensions, and calls to anything outside the allow-list are rejected
+# outright — that closes off every path to builtins, imports, or attribute
+# traversal, regardless of which engine pandas ends up using internally.
+_ALLOWED_FORMULA_FUNCS = {"log", "log10", "log2", "log1p", "abs", "sqrt", "exp", "min", "max", "round"}
+
+_ALLOWED_FORMULA_NODES = (
+    ast.Expression, ast.BinOp, ast.UnaryOp, ast.Compare, ast.BoolOp,
+    ast.Name, ast.Load, ast.Constant,
+    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow, ast.Mod, ast.FloorDiv,
+    ast.USub, ast.UAdd,
+    ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.Eq, ast.NotEq,
+    ast.And, ast.Or, ast.Not,
+    ast.Call,
+)
+
+
+def _validate_formula(formula: str) -> None:
+    """Raise ValueError if formula contains anything outside the safe grammar."""
+    try:
+        tree = ast.parse(formula, mode="eval")
+    except SyntaxError as e:
+        raise ValueError(f"Invalid formula syntax: {e}")
+
+    for node in ast.walk(tree):
+        if not isinstance(node, _ALLOWED_FORMULA_NODES):
+            raise ValueError(
+                f"Unsupported expression type '{type(node).__name__}' in formula. "
+                "Only arithmetic (+ - * / ** %), comparisons (> < >= <= == !=), "
+                "boolean logic (and/or/not), column names, numbers, and "
+                f"{', '.join(sorted(_ALLOWED_FORMULA_FUNCS))}() are allowed."
+            )
+        if isinstance(node, ast.Call):
+            if not isinstance(node.func, ast.Name) or node.func.id not in _ALLOWED_FORMULA_FUNCS:
+                bad_name = getattr(node.func, "id", None) or "<expression>"
+                raise ValueError(
+                    f"Function '{bad_name}' is not allowed. "
+                    f"Supported functions: {', '.join(sorted(_ALLOWED_FORMULA_FUNCS))}"
+                )
+
+
 @router.post("/{session_id}/custom_formula")
 def custom_formula(session_id: str, body: CustomFormulaBody):
-    """Create column using pandas eval (safe subset of Python expressions)."""
+    """Create column using pandas eval, restricted to a whitelisted expression grammar."""
     df = _get_or_init(session_id).copy()
     
     if not body.new_col_name or not body.new_col_name.strip():
@@ -978,7 +1026,11 @@ def custom_formula(session_id: str, body: CustomFormulaBody):
     new_name = body.new_col_name.strip()
 
     try:
-        # Safe eval with local variables
+        _validate_formula(body.formula)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+    try:
         df[new_name] = df.eval(body.formula, engine='python')
     except Exception as e:
         raise HTTPException(422, f"Formula error: {str(e)}\n\nSupported: +, -, *, /, **, >, <, ==, etc. and functions like log(), abs(), sqrt()")

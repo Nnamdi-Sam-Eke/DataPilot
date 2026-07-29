@@ -615,6 +615,18 @@ export default function PageCleaning({ setPage }) {
         ))}
       </div>
 
+      <style>{`
+        @media (max-width: 768px) {
+          .cleaning-layout { grid-template-columns: 1fr !important; }
+          .cleaning-right-panel { display: none; }
+          .cleaning-ops-tabs { overflow-x: auto; }
+          .cleaning-ops-tabs > div { min-width: max-content; }
+        }
+        @media (max-width: 480px) {
+          .cleaning-tab-bar { flex-wrap: nowrap !important; overflow-x: auto; }
+        }
+      `}</style>
+
       <div style={{ display:"grid", gridTemplateColumns:"1fr 320px", gap:16, alignItems:"start", minWidth:0, overflow:"hidden" }} className="cleaning-layout">
 
         {/* ── left: operations panel ── */}

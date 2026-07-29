@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Icons } from "../shared/icons.jsx";
 import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";
 import ApiFallback from "../components/ApiFallback.jsx";
+import ProGate from "./ProGate.jsx";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -180,11 +181,12 @@ function MiniBar({ val, max, color }) {
 }
 
 // Full result panel for a single model
-function ModelResultPanel({ result, isActive, onSetActive, showDownloadTip }) {
+function ModelResultPanel({ result, isActive, onSetActive, showDownloadTip, isPro }) {
   const metrics = result?.metrics || {};
   const isClass = result?.task === "classification";
   const color = MODEL_COLORS[result?.model_type] || "var(--accent2)";
   const pm = primaryMetric(result);
+  const modelTTL = isPro ? 60 : 10;
 
   return (
     <div className="card fade-up" style={{ border: isActive ? "1px solid rgba(108,99,255,0.35)" : "1px solid var(--border2)", transition: "border-color 0.2s" }}>
@@ -234,26 +236,31 @@ function ModelResultPanel({ result, isActive, onSetActive, showDownloadTip }) {
         Trained on {result?.train_size?.toLocaleString()} rows · Tested on {result?.test_size?.toLocaleString()} rows
       </div>
 
-      {/* Download */}
-      <a
-        href={`${API_BASE}/train/download/${result?.model_id}`}
-        download
-        style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "8px 14px", borderRadius: 8, background: "var(--bg3)", border: "1px solid var(--border2)", color: "var(--text2)", fontSize: 12, fontWeight: 500, textDecoration: "none", transition: "all 0.15s", cursor: "pointer" }}
-        onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(108,99,255,0.4)"; e.currentTarget.style.color = "var(--accent2)"; }}
-        onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border2)"; e.currentTarget.style.color = "var(--text2)"; }}
-      >
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-        Download .pkl
-      </a>
+      {/* Download — Pro only */}
+      {isPro ? (
+        <a
+          href={`${API_BASE}/train/download/${result?.model_id}`}
+          download
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, padding: "8px 14px", borderRadius: 8, background: "var(--bg3)", border: "1px solid var(--border2)", color: "var(--text2)", fontSize: 12, fontWeight: 500, textDecoration: "none", transition: "all 0.15s", cursor: "pointer" }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(108,99,255,0.4)"; e.currentTarget.style.color = "var(--accent2)"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border2)"; e.currentTarget.style.color = "var(--text2)"; }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+          Download .pkl
+        </a>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", borderRadius: 8, background: "var(--bg3)", border: "1px solid var(--border2)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: "var(--text3)" }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+            Download .pkl
+          </div>
+          <span style={{ fontSize: 9, fontWeight: 700, color: "var(--accent2)", background: "var(--accent-dim)", border: "1px solid rgba(108,99,255,0.3)", borderRadius: 4, padding: "2px 7px" }}>PRO</span>
+        </div>
+      )}
 
-      {/* Temporary storage warning */}
-      <div style={{
-        fontSize: 11,
-        color: "var(--text3)",
-        marginTop: 8,
-        textAlign: "center"
-      }}>
-        ⚠️ This model will be available for 20 minutes. Download it to keep it permanently.
+      {/* TTL warning */}
+      <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 8, textAlign: "center" }}>
+        ⚠️ This model lives in memory for {modelTTL} minutes.{isPro ? " It's also saved to your cloud workspace." : " Upgrade to Pro to persist models across sessions."}
       </div>
 
       {/* Tip shown briefly after training completes */}
@@ -276,10 +283,16 @@ export default function PageTrain({ setPage }) {
     trainResults, setTrainResults,
     trainedModels, setTrainedModels,
     trainConfig, setTrainConfig,
+    userProfile,
   } = useDataPilot();
+
+  const plan  = (userProfile?.plan || "free").toLowerCase();
+  const isPro = plan === "pro";
 
   const [training, setTraining] = useState(false);
   const [error, setError] = useState("");
+  // Tracks when a free-plan user hits the 1-model-per-session limit
+  const [planLimitHit, setPlanLimitHit] = useState(false);
   // Which result to show in the detail panel (defaults to most recent)
   const [detailModelId, setDetailModelId] = useState(null);
   const [showDownloadTip, setShowDownloadTip] = useState(false);
@@ -300,14 +313,22 @@ export default function PageTrain({ setPage }) {
     if (!sessionId || !targetCol || activeSessionExpired) return;
     setTraining(true);
     setError("");
+    setPlanLimitHit(false);
 
     try {
       const res = await fetch(`${API_BASE}/train/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, target_column: targetCol, model_type: selectedModel, test_size: testSize }),
+        body: JSON.stringify({ session_id: sessionId, target_column: targetCol, model_type: selectedModel, test_size: testSize, plan }),
       });
       const data = await res.json();
+
+      // Free-plan model limit — show ProGate, not a generic error
+      if (res.status === 403) {
+        setPlanLimitHit(true);
+        return;
+      }
+
       if (!res.ok) throw new Error(data.detail || "Training failed");
 
       // Build a stored model entry
@@ -367,6 +388,8 @@ export default function PageTrain({ setPage }) {
 
   // ── Delete a trained model from the list ───────────────────────────────
   const handleDelete = (modelIdToRemove) => {
+    // Deleting a model clears the plan limit gate — they have a free slot again
+    setPlanLimitHit(false);
     // Do everything in one setTrainedModels call so we never operate on stale state
     setTrainedModels(prev => {
       const remaining = prev.filter(m => m.model_id !== modelIdToRemove);
@@ -458,35 +481,46 @@ export default function PageTrain({ setPage }) {
                 <div style={{ fontSize: 11, color: "var(--text3)", fontFamily: "'DM Mono', monospace", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>Algorithm</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                   {MODEL_OPTIONS.map(m => {
-                    const trained = trainedTypes.has(m.id);
+                    const trained   = trainedTypes.has(m.id);
                     const isSelected = selectedModel === m.id;
-                    const thisEntry = trainedModels.find(tm => tm.model_type === m.id);
+                    const isProOnly  = ["xgb", "svm"].includes(m.id);
+                    const locked     = isProOnly && !isPro;
+                    const thisEntry  = trainedModels.find(tm => tm.model_type === m.id);
                     const pm = primaryMetric(thisEntry);
                     return (
                       <div
                         key={m.id}
-                        onClick={() => set("selectedModel", m.id)}
-                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 8, background: isSelected ? "var(--accent-dim)" : "var(--bg3)", border: `1px solid ${isSelected ? "rgba(108,99,255,0.3)" : "var(--border)"}`, cursor: "pointer", transition: "all 0.15s" }}
+                        onClick={() => !locked && set("selectedModel", m.id)}
+                        title={locked ? "Upgrade to Pro to unlock this algorithm" : undefined}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 10,
+                          padding: "9px 12px", borderRadius: 8,
+                          background: locked ? "var(--bg3)" : isSelected ? "var(--accent-dim)" : "var(--bg3)",
+                          border: `1px solid ${locked ? "var(--border)" : isSelected ? "rgba(108,99,255,0.3)" : "var(--border)"}`,
+                          cursor: locked ? "not-allowed" : "pointer",
+                          opacity: locked ? 0.55 : 1,
+                          transition: "all 0.15s",
+                        }}
                       >
-                        <div style={{ width: 14, height: 14, borderRadius: "50%", border: `2px solid ${isSelected ? "var(--accent2)" : "var(--text3)"}`, background: isSelected ? "var(--accent)" : "transparent", flexShrink: 0 }} />
+                        <div style={{ width: 14, height: 14, borderRadius: "50%", border: `2px solid ${locked ? "var(--text3)" : isSelected ? "var(--accent2)" : "var(--text3)"}`, background: !locked && isSelected ? "var(--accent)" : "transparent", flexShrink: 0 }} />
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 12.5, fontWeight: 500, color: "var(--text)", display: "flex", alignItems: "center", gap: 6 }}>
                             {m.label}
-                            {trained && (
+                            {locked && (
+                              <span style={{ fontSize: 9, fontWeight: 700, color: "var(--accent2)", background: "var(--accent-dim)", border: "1px solid rgba(108,99,255,0.3)", borderRadius: 4, padding: "1px 5px", letterSpacing: "0.04em" }}>PRO</span>
+                            )}
+                            {!locked && trained && (
                               <span style={{ width: 6, height: 6, borderRadius: "50%", background: m.color, flexShrink: 0, display: "inline-block" }} title="Already trained" />
                             )}
                           </div>
-                          <div style={{ fontSize: 10.5, color: "var(--text3)", marginTop: 1 }}>{m.desc}</div>
+                          <div style={{ fontSize: 10.5, color: "var(--text3)", marginTop: 1 }}>
+                            {locked ? "Pro plan required" : m.desc}
+                          </div>
                         </div>
-                        {/* Show metric badge if trained */}
-                        {trained && pm && (
-                          <MetricBadge
-                            value={pm.val}
-                            task={thisEntry?.task}
-                          />
+                        {!locked && trained && pm && (
+                          <MetricBadge value={pm.val} task={thisEntry?.task} />
                         )}
-                        {/* Retrain indicator */}
-                        {trained && isSelected && (
+                        {!locked && trained && isSelected && (
                           <span style={{ fontSize: 9, color: "var(--amber)", fontFamily: "'DM Mono', monospace", fontWeight: 600 }}>retrain</span>
                         )}
                       </div>
@@ -496,6 +530,16 @@ export default function PageTrain({ setPage }) {
               </div>
             </div>
           </div>
+
+          {planLimitHit && !isPro && (
+            <ProGate
+              compact
+              icon="🤖"
+              feature="1 model per session on Free"
+              description="Delete your current model to retrain, or upgrade to Pro to train and compare all 4 algorithms side by side."
+              onUpgrade={() => setPage("/settings", { state: { highlightSection: "manage-subscription" } })}
+            />
+          )}
 
           {error && (
             <ApiFallback message={error} onRetry={startTrain} />
@@ -540,6 +584,7 @@ export default function PageTrain({ setPage }) {
                 isActive={displayResult.model_id === modelId}
                 onSetActive={handleSetActive}
                 showDownloadTip={showDownloadTip}
+                isPro={isPro}
               />
 
               {/* Feature importance */}
@@ -619,10 +664,16 @@ export default function PageTrain({ setPage }) {
       </div>
 
       <NextStepBar
-        label="Run Predictions"
+        label={activeEntry?.task === "regression" ? "Predict Values" : "Run Predictions"}
         to="/predictions"
         setPage={setPage}
-        note={modelId ? `Active model: ${MODEL_LABELS[activeEntry?.model_type] || "—"} · switch anytime from the comparison table` : "Train a model first to run predictions"}
+        note={
+          modelId
+            ? activeEntry?.task === "regression"
+              ? `Active model: ${MODEL_LABELS[activeEntry?.model_type] || "—"} · predicts numeric values`
+              : `Active model: ${MODEL_LABELS[activeEntry?.model_type] || "—"} · switch anytime from the comparison table`
+            : "Train a model first to run predictions"
+        }
       />
     </div>
   );

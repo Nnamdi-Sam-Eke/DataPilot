@@ -95,7 +95,9 @@ function NextStepBar({ label, to, setPage, note }) {
 }
 
 export default function PageVisualization({ setPage }) {
-  const { sessionId, columns, savedPlots, setSavedPlots, activeSessionExpired } = useDataPilot();
+  const { sessionId, columns, savedPlots, setSavedPlots, activeSessionExpired, sessions, userProfile } = useDataPilot();
+  const plan  = (userProfile?.plan || "free").toLowerCase();
+  const isPro = plan === "pro";
   const [plotType,    setPlotType]    = useState("hist");
   const [xCol,        setXCol]        = useState("");
   const [yCol,        setYCol]        = useState("");
@@ -105,6 +107,11 @@ export default function PageVisualization({ setPage }) {
   const [building,    setBuilding]    = useState(false);
   const [lightbox,    setLightbox]    = useState(null);
   const [activeGroup, setActiveGroup] = useState("Distribution");
+
+  // Compare mode
+  const [compareMode,    setCompareMode]    = useState(false);
+  const [compareSession, setCompareSession] = useState("");  // second session id to compare against
+  const [showProNudge,   setShowProNudge]   = useState(false);
   const selectedType = PLOT_TYPES.find((p) => p.id === plotType);
 
   const downloadAll = async () => {
@@ -224,24 +231,54 @@ export default function PageVisualization({ setPage }) {
       x: xCol || undefined,
       y: yCol || undefined,
       hue: hueCol || undefined,
-      title: `${selectedType?.label}${xCol ? ` — ${xCol}` : ""}${yCol ? ` vs ${yCol}` : ""}`,
+      title: `${selectedType?.label}${xCol ? ` — ${xCol}` : ""}${yCol ? ` vs ${yCol}` : ""}${compareMode && compareSession ? " (Compare)" : ""}`,
       customizations: { color_scheme: colorScheme, bins, grid: true, legend: true },
     };
     const tempId = Date.now();
     setSavedPlots((p) => [{ id: tempId, ...plotConfig, loading: true }, ...p]);
     setBuilding(true);
     try {
-      const dataRes = await fetch(`${API_BASE}/data/${sessionId}?limit=5000`);
-      if (!dataRes.ok) throw new Error("Failed to fetch session data");
-      const dataJson = await dataRes.json();
-      const res = await fetch(`${API_BASE}/plots/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: dataJson.data, plots: [plotConfig] }),
-      });
-      const result    = await res.json();
-      const plotResult = result.plots?.[0];
-      setSavedPlots((p) => p.map((pl) => (pl.id === tempId ? { ...pl, loading: false, image: plotResult?.image, error: plotResult?.error } : pl)));
+      if (compareMode && compareSession && isPro) {
+        // Compare mode: fetch data for both sessions, send together
+        const [res1, res2] = await Promise.all([
+          fetch(`${API_BASE}/data/${sessionId}?limit=5000`),
+          fetch(`${API_BASE}/data/${compareSession}?limit=5000`),
+        ]);
+        if (!res1.ok || !res2.ok) throw new Error("Failed to fetch session data");
+        const [d1, d2] = await Promise.all([res1.json(), res2.json()]);
+        const s1 = sessions.find(s => s.sessionId === sessionId);
+        const s2 = sessions.find(s => s.sessionId === compareSession);
+        const res = await fetch(`${API_BASE}/plots/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            compareMode: true,
+            plan,
+            compareData: [
+              { data: d1.data, name: s1?.fileName || "Dataset 1" },
+              { data: d2.data, name: s2?.fileName || "Dataset 2" },
+            ],
+            plots: [plotConfig],
+            session_id: sessionId,
+          }),
+        });
+        const result     = await res.json();
+        const plotResult = result.plots?.[0];
+        setSavedPlots((p) => p.map((pl) => (pl.id === tempId ? { ...pl, loading: false, image: plotResult?.image, error: plotResult?.error } : pl)));
+      } else {
+        // Single dataset mode
+        const dataRes = await fetch(`${API_BASE}/data/${sessionId}?limit=5000`);
+        if (!dataRes.ok) throw new Error("Failed to fetch session data");
+        const dataJson = await dataRes.json();
+        const res = await fetch(`${API_BASE}/plots/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: dataJson.data, plots: [plotConfig], plan, session_id: sessionId }),
+        });
+        const result    = await res.json();
+        const plotResult = result.plots?.[0];
+        setSavedPlots((p) => p.map((pl) => (pl.id === tempId ? { ...pl, loading: false, image: plotResult?.image, error: plotResult?.error } : pl)));
+      }
     } catch (e) {
       setSavedPlots((p) => p.map((pl) => (pl.id === tempId ? { ...pl, loading: false, error: e.message } : pl)));
     } finally {
@@ -303,17 +340,109 @@ export default function PageVisualization({ setPage }) {
           Chart Builder
         </div>
 
-        <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap" }}>
+        {/* Compare mode toggle */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, padding: "10px 12px", borderRadius: 9, background: "var(--bg3)", border: "1px solid var(--border)" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)", display: "flex", alignItems: "center", gap: 7 }}>
+              Compare Mode
+              {!isPro && <span style={{ fontSize: 9, fontWeight: 700, color: "var(--accent2)", background: "var(--accent-dim)", border: "1px solid rgba(108,99,255,0.3)", borderRadius: 4, padding: "1px 5px" }}>PRO</span>}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text3)" }}>
+              {isPro ? "Overlay charts from two datasets side by side" : "Upgrade to Pro to compare multiple datasets"}
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              if (!isPro) { setShowProNudge(v => !v); return; }
+              setCompareMode(v => !v);
+              setCompareSession("");
+            }}
+            style={{
+              flexShrink: 0, width: 40, height: 22, borderRadius: 11,
+              border: "none", cursor: isPro ? "pointer" : "not-allowed",
+              background: compareMode && isPro ? "var(--accent)" : "var(--border2)",
+              position: "relative", transition: "background 0.2s",
+              opacity: isPro ? 1 : 0.6,
+            }}
+          >
+            <div style={{
+              position: "absolute", top: 3,
+              left: compareMode && isPro ? 21 : 3,
+              width: 16, height: 16, borderRadius: "50%",
+              background: "white", transition: "left 0.2s",
+            }} />
+          </button>
+        </div>
+
+        {/* Pro nudge for compare mode */}
+        {showProNudge && !isPro && (
+          <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 9, background: "rgba(108,99,255,0.07)", border: "1px solid rgba(108,99,255,0.2)", fontSize: 12, color: "var(--text2)" }}>
+            🔒 <strong>Compare Mode</strong> is a Pro feature. Upgrade to overlay charts from multiple datasets and spot differences instantly.
+          </div>
+        )}
+
+        {/* Compare session picker — shown when compare mode is on */}
+        {compareMode && isPro && (() => {
+          const otherSessions = sessions.filter(s => s.sessionId !== sessionId && !s.expired);
+          const selectedCompare = otherSessions.find(s => s.sessionId === compareSession);
+          const currentCols = new Set(columns);
+          const incompatibleCols = selectedCompare
+            ? (selectedCompare.columns || []).filter(c => !currentCols.has(c))
+            : [];
+          const missingFromCompare = selectedCompare
+            ? columns.filter(c => !(selectedCompare.columns || []).includes(c))
+            : [];
+
+          return (
+            <div style={{ marginBottom: 14, padding: "12px 14px", borderRadius: 9, background: "rgba(108,99,255,0.07)", border: "1px solid rgba(108,99,255,0.2)" }}>
+              <div style={{ fontSize: 11, color: "var(--text3)", fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
+                Compare against
+              </div>
+              <select
+                className="input-field"
+                value={compareSession}
+                onChange={e => setCompareSession(e.target.value)}
+                style={{ cursor: "pointer", fontSize: 13 }}
+              >
+                <option value="">— Select second dataset —</option>
+                {otherSessions.map(s => (
+                  <option key={s.sessionId} value={s.sessionId}>
+                    {s.fileName} · {s.rowCount?.toLocaleString()} rows
+                  </option>
+                ))}
+              </select>
+              {otherSessions.length === 0 && (
+                <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 6 }}>
+                  ⚠ Upload a second dataset to enable comparison
+                </div>
+              )}
+              {selectedCompare && missingFromCompare.length > 0 && (
+                <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 6, lineHeight: 1.5 }}>
+                  ⚠ Column mismatch: <strong>{missingFromCompare.slice(0, 3).join(", ")}{missingFromCompare.length > 3 ? ` +${missingFromCompare.length - 3} more` : ""}</strong> exist in the primary dataset but not in the comparison dataset. Charts using these columns will error.
+                </div>
+              )}
+              {selectedCompare && missingFromCompare.length === 0 && incompatibleCols.length === 0 && (
+                <div style={{ fontSize: 11, color: "var(--green)", marginTop: 6 }}>
+                  ✓ Column schemas match — comparison is ready
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        <div style={{ overflowX: "auto", marginBottom: 14, paddingBottom: 4 }}>
+          <div style={{ display:"flex", gap:6, minWidth: "max-content" }}>
           {GROUPS.map((g) => (
             <button key={g} onClick={() => setActiveGroup(g)}
               style={{ padding:"5px 12px", borderRadius:6, cursor:"pointer", fontSize:11.5, fontWeight:500,
                 background: activeGroup === g ? "var(--accent)" : "var(--bg3)",
                 color: activeGroup === g ? "white" : "var(--text2)",
                 border: `1px solid ${activeGroup === g ? "transparent" : "var(--border)"}`,
-                transition:"all 0.15s" }}>
+                transition:"all 0.15s", whiteSpace: "nowrap" }}>
               {g}
             </button>
           ))}
+          </div>
         </div>
 
         <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:16 }}>
@@ -350,7 +479,7 @@ export default function PageVisualization({ setPage }) {
             </div>
           ))}
           <button className="btn-primary" onClick={generatePlot}
-            disabled={building || (selectedType?.needsX && !xCol)}
+            disabled={building || (selectedType?.needsX && !xCol) || (compareMode && isPro && !compareSession)}
             style={{ whiteSpace:"nowrap", height:38, flexShrink:0, marginLeft:"auto", minWidth:110 }}>
             {building
               ? <svg className="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 11-6.219-8.56" /></svg>

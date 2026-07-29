@@ -135,6 +135,7 @@ export const styles = `
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
+    overflow-y: auto;
     z-index: 10;
     position: relative;
   }
@@ -363,7 +364,9 @@ export const styles = `
 
 @media (max-width: 768px) {
   .topbar-avatar-wrap .topbar-dropdown {
-    display: none;
+    /* Dropdown is now accessible on mobile — sign-out requires it */
+    min-width: 180px;
+    right: 0;
   }
 }
 
@@ -909,6 +912,13 @@ export const styles = `
   @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
   @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes highlightPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(108,99,255,0.32); }
+    50%      { box-shadow: 0 0 0 9px rgba(108,99,255,0); }
+  }
+  .highlight-pulse {
+    animation: highlightPulse 1.2s ease-in-out 2;
+  }
 
   .fade-up { animation: fadeUp 0.35s ease both; }
   .fade-up-1 { animation-delay: 0.05s; }

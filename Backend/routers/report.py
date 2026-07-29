@@ -172,8 +172,8 @@ async def generate_report(payload: Dict):
     ])
     model_id   = payload.get("model_id")
     file_name  = payload.get("file_name", "dataset.csv")
+    plan       = str(payload.get("plan", "free")).strip().lower()
 
-    # Prefer user BYOK key; fall back to server env key (same as insights.py)
     groq_key = (payload.get("groq_key") or "").strip() or _get_server_groq_key()
 
     if not session_id:

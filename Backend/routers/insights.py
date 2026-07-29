@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 from datetime import datetime
 import os
+import re
 import logging
 import json
 from typing import Dict
@@ -14,16 +15,12 @@ logger = logging.getLogger(__name__)
 
 # ================= CACHE =================
 CONTEXT_CACHE: Dict[str, str] = {}
-REQUEST_LOGS: Dict[str, list] = {}
-
-# ================= CONFIG =================
-RATE_LIMIT = int(os.getenv("INSIGHTS_RATE_LIMIT", "5"))
-RATE_WINDOW_SECONDS = int(os.getenv("INSIGHTS_RATE_WINDOW", "60"))
 
 MAX_COLUMNS = int(os.getenv("INSIGHTS_MAX_COLUMNS", "20"))
 MAX_SAMPLE_ROWS = int(os.getenv("INSIGHTS_MAX_SAMPLE_ROWS", "3"))
-MAX_SUMMARY_ITEMS = int(os.getenv("INSIGHTS_MAX_SUMMARY_ITEMS", "10"))
-MAX_PROMPT_CHARS = int(os.getenv("INSIGHTS_MAX_PROMPT_CHARS", "12000"))
+MAX_PROMPT_CHARS = int(os.getenv("INSIGHTS_MAX_PROMPT_CHARS", "20000"))
+MAX_MATCHED_ENTITIES_PER_COL = int(os.getenv("INSIGHTS_MAX_MATCHED_ENTITIES", "3"))
+MAX_MATCHED_ROWS = int(os.getenv("INSIGHTS_MAX_MATCHED_ROWS", "500"))
 
 # ================= ENV =================
 ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
@@ -54,12 +51,13 @@ async def get_insights(payload: dict):
 
     prompt = str(payload.get("prompt", "")).strip()
     session_ids = payload.get("session_ids", [])
+    uid  = str(payload.get("uid", "")).strip()
+    plan = str(payload.get("plan", "free")).strip().lower()
 
     if not prompt:
         return {"error": "Please provide a prompt."}
     if not session_ids:
         return {"error": "No dataset selected."}
-
     now = datetime.utcnow()
     datasets_text = []
 
@@ -72,33 +70,136 @@ async def get_insights(payload: dict):
             CONTEXT_CACHE.pop(sid, None)
             return {"error": f"Dataset session '{sid}' not found or expired."}
 
-        # ---------- rate limit ----------
-        times = REQUEST_LOGS.get(sid, [])
-        times = [t for t in times if (now - t).total_seconds() < RATE_WINDOW_SECONDS]
-
-        if len(times) >= RATE_LIMIT:
-            return {"error": f"Rate limit exceeded for session '{sid}'"}
-
-        times.append(now)
-        REQUEST_LOGS[sid] = times
-
         # ================= BUILD SUMMARY =================
         try:
             cols = df.columns.tolist()[:MAX_COLUMNS]
             sample = df.head(MAX_SAMPLE_ROWS).to_dict(orient="records")
 
+            # ---------- FIX: full numeric stats for EVERY numeric column ----------
+            # Previously this was truncated to the first MAX_SUMMARY_ITEMS (10)
+            # columns via describe(), which meant min/max/count for any numeric
+            # column past that cutoff never reached the LLM at all. Any question
+            # like "what's the highest X" for a later column silently fell back
+            # to the LLM guessing off the 3-row sample instead of real data.
             numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
             numeric_summary = {}
 
-            if numeric_cols:
-                desc = df[numeric_cols].describe().to_dict()
-                numeric_summary = dict(list(desc.items())[:MAX_SUMMARY_ITEMS])
+            for col in numeric_cols:
+                series = df[col].dropna()
+                if series.empty:
+                    continue
+                numeric_summary[col] = {
+                    "min": series.min(),
+                    "max": series.max(),
+                    "mean": round(series.mean(), 4),
+                    "sum": series.sum(),
+                    "count": int(series.count()),
+                }
+
+            # ---------- FIX: full unique-value coverage for categorical columns ----------
+            # The previous version only ever sent the top 5 most-frequent values per
+            # categorical column. In a dataset like "country x year" (each country
+            # appearing roughly the same number of times), value_counts().head(5)
+            # returns 5 essentially arbitrary countries — any country NOT in that
+            # top 5 was invisible to the LLM, which then (correctly, per its own
+            # "don't hallucinate" instruction) reported it as missing even though
+            # it was present in every row. Same root cause meant "how many unique
+            # locations" was unanswerable — nunique was never computed at all.
+            #
+            # Fix: always report the exact unique-value COUNT for every column
+            # (so cardinality questions are answerable regardless of size), and
+            # for columns with low/moderate cardinality, send the FULL sorted list
+            # of unique values — not just the top 5 by frequency — so "is X present"
+            # questions are answered from ground truth. High-cardinality columns
+            # (free text, IDs) still fall back to top-N-by-frequency to keep the
+            # prompt bounded.
+            MAX_FULL_UNIQUE_VALUES = int(get_env("INSIGHTS_MAX_FULL_UNIQUE_VALUES", "300"))
+
+            unique_counts = {}
+            for col in cols:
+                try:
+                    unique_counts[col] = int(df[col].nunique(dropna=True))
+                except Exception:
+                    continue
+
+            categorical_cols = df.select_dtypes(exclude=["number"]).columns.tolist()
+            categorical_summary = {}
+
+            for col in categorical_cols[:MAX_COLUMNS]:
+                try:
+                    non_null = df[col].dropna().astype(str)
+                    nunique = non_null.nunique()
+
+                    if nunique <= MAX_FULL_UNIQUE_VALUES:
+                        # Small/medium cardinality: give the complete set of
+                        # distinct values so presence/absence questions are exact.
+                        categorical_summary[col] = {
+                            "unique_count": int(nunique),
+                            "all_values": sorted(non_null.unique().tolist()),
+                        }
+                    else:
+                        # High cardinality: full list would blow the prompt budget,
+                        # fall back to top values by frequency plus the exact count.
+                        top_values = non_null.value_counts().head(5).to_dict()
+                        categorical_summary[col] = {
+                            "unique_count": int(nunique),
+                            "top_values": top_values,
+                        }
+                except Exception:
+                    continue
+
+            # ---------- FIX: entity/filter-aware row retrieval ----------
+            # Knowing an entity EXISTS (via all_values above) isn't enough for
+            # questions like "what is Nigeria's trend from 2000 to 2019" — that
+            # needs Nigeria's actual rows, which the model never received before
+            # (only a 3-row sample and dataset-wide aggregates). This scans the
+            # user's prompt for any exact mention of a value from a low/medium
+            # cardinality categorical column (the ones where we have the full
+            # all_values list, so we know precisely what to look for), filters
+            # the FULL dataframe down to just the matching rows, and includes
+            # them verbatim so entity-specific questions are answered from real
+            # data rather than global aggregates or a guess.
+            matched_entities = {}
+
+            for col, cs in categorical_summary.items():
+                all_values = cs.get("all_values")
+                if not all_values:
+                    continue  # high-cardinality column — no reliable full list to match against
+
+                hits = []
+                for value in all_values:
+                    if not value:
+                        continue
+                    # word-boundary, case-insensitive match so "Chad" doesn't
+                    # match inside an unrelated word, and multi-word values
+                    # ("United States") still match correctly
+                    if re.search(r"\b" + re.escape(value) + r"\b", prompt, flags=re.IGNORECASE):
+                        hits.append(value)
+                    if len(hits) >= MAX_MATCHED_ENTITIES_PER_COL:
+                        break
+
+                if not hits:
+                    continue
+
+                try:
+                    mask = df[col].astype(str).isin(hits)
+                    matched_rows = df.loc[mask].head(MAX_MATCHED_ROWS).to_dict(orient="records")
+                    matched_entities[col] = {
+                        "matched_values": hits,
+                        "row_count": int(mask.sum()),
+                        "rows": matched_rows,
+                    }
+                except Exception:
+                    continue
 
             summary = {
                 "shape": list(df.shape),
                 "columns": cols,
                 "sample": sample,
                 "numeric_summary": numeric_summary,
+                "unique_counts": unique_counts,
+                "categorical_summary": categorical_summary,
+                "matched_entities": matched_entities,
             }
 
         except Exception as e:
@@ -108,6 +209,9 @@ async def get_insights(payload: dict):
                 "columns": [],
                 "sample": [],
                 "numeric_summary": {},
+                "unique_counts": {},
+                "categorical_summary": {},
+                "matched_entities": {},
             }
 
         # ================= SAFE CONTEXT STRING =================
@@ -124,6 +228,32 @@ async def get_insights(payload: dict):
     system_prompt = (
         "You are DataPilot, a precise data analysis assistant. "
         "You analyze datasets and return structured insights with numbers, patterns, and explanations. "
+        "The numeric_summary field contains the exact min, max, mean, sum, and count "
+        "for every numeric column in the full dataset (not just the sample rows) — "
+        "always use these exact values when answering questions about highest, lowest, "
+        "average, or total figures. "
+        "The unique_counts field gives the EXACT number of distinct values for every "
+        "column in the full dataset — always use it for questions like 'how many unique X'. "
+        "The categorical_summary field describes text/category columns. When it contains "
+        "an 'all_values' list, that list is the COMPLETE set of distinct values in the full "
+        "dataset for that column — use it as ground truth to answer whether a specific value "
+        "(e.g. a country or category) is present, and never say a value is missing just because "
+        "it doesn't appear in the sample rows. When categorical_summary only contains "
+        "'top_values' (high-cardinality columns), those are the most frequent values only, "
+        "not the complete set — do not claim a value is absent based on top_values alone; "
+        "say the full list isn't available for that column instead. "
+        "The matched_entities field contains the ACTUAL FULL ROWS from the complete dataset "
+        "for any specific value the user named in their question (e.g. a country, category, or "
+        "ID mentioned by name). If the user asks about a specific entity — a trend, values over "
+        "time, a comparison, or any question about 'X' where X names something specific — and "
+        "matched_entities contains that entity's rows, you MUST base your answer on those exact "
+        "rows, not on numeric_summary (which is aggregated across the whole column) and not on "
+        "the sample. If the user names an entity but it does NOT appear in matched_entities, "
+        "check categorical_summary's all_values/unique_count for that column first — if the "
+        "column uses top_values only (no all_values), say you can't confirm whether that specific "
+        "entity exists rather than asserting it's missing. "
+        "The sample field only shows a few example rows for context and must not be used "
+        "to answer aggregate, cardinality, membership, or entity-specific questions. "
         "Be concise, accurate, and avoid hallucinating missing data."
     )
 
@@ -151,7 +281,9 @@ async def get_insights(payload: dict):
 
         logger.info(f"Insight generated for {len(session_ids)} dataset(s)")
 
-        return {"response": response}
+        return {
+            "response": response,
+        }
 
     except Exception as e:
         err = str(e).lower()

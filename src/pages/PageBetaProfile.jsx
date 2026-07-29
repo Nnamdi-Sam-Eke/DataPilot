@@ -1,3 +1,9 @@
+/*
+Page Rating: 8.5/10
+Notes: Well-structured option cards with active-state glow.
+TODOs:
+ - Add a progress bar across the two-page beta flow.
+*/
 import { useMemo, useState } from "react";
 import { Icons } from "../shared/icons.jsx";
 import { useDataPilot } from "../DataPilotContext.jsx";

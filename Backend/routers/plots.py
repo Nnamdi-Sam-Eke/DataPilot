@@ -57,7 +57,15 @@ async def generate_plot(payload: dict):
     """
     plots = payload.get("plots", [])
     compare_mode = payload.get("compareMode", False)
-    session_id = payload.get("session_id", None)  # used for plot cache scoping
+    session_id = payload.get("session_id", None)
+    plan       = str(payload.get("plan", "free")).strip().lower()
+
+    # Gate compare mode behind Pro
+    if compare_mode and plan != "pro":
+        return {
+            "error": "Dataset comparison is available on the Pro plan. Upgrade to compare multiple datasets side by side.",
+            "plan_gate": "pro",
+        }
     
     if compare_mode:
         compare_data = payload.get("compareData", [])

@@ -21,7 +21,11 @@ export default function PagePredictions({ setPage }) {
     predictionFileName: fileName,  setPredictionFileName: setFileName,
     activeSessionExpired,
     trainedModels, setModelId, setModelMeta, setTrainResults,
+    userProfile,
   } = useDataPilot();
+
+  const plan  = (userProfile?.plan || "free").toLowerCase();
+  const isPro = plan === "pro";
 
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState("");
@@ -65,7 +69,7 @@ export default function PagePredictions({ setPage }) {
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetch(`${API_BASE}/predict/?model_id=${modelId}`, {
+      const res = await fetch(`${API_BASE}/predict/?model_id=${modelId}&plan=${plan}`, {
         method: "POST",
         body:   formData,
       });
@@ -197,27 +201,36 @@ export default function PagePredictions({ setPage }) {
         {/* Toggle pill */}
         <div style={{ display: "flex", gap: 0, marginBottom: 12, background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: 9, padding: 3, width: "fit-content" }}>
           {[
-            { key: "session", label: "Current Dataset", icon: Icons.layers },
-            { key: "file",    label: "Upload New File",  icon: Icons.upload },
-          ].map(({ key, label, icon }) => (
-            <button
-              key={key}
-              onClick={() => { setScoreMode(key); setError(""); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "6px 14px", borderRadius: 6, border: "none",
-                background: scoreMode === key ? "var(--accent-dim)" : "transparent",
-                color:      scoreMode === key ? "var(--accent2)"    : "var(--text3)",
-                fontWeight: scoreMode === key ? 600 : 400,
-                fontSize: 12, cursor: "pointer", transition: "all 0.15s",
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d={icon} />
-              </svg>
-              {label}
-            </button>
-          ))}
+            { key: "session", label: "Current Dataset", icon: Icons.layers,  proOnly: false },
+            { key: "file",    label: "Upload New File",  icon: Icons.upload,  proOnly: true  },
+          ].map(({ key, label, icon, proOnly }) => {
+            const locked = proOnly && !isPro;
+            return (
+              <button
+                key={key}
+                onClick={() => {
+                  if (locked) { setError("Scoring a new file is available on the Pro plan. Use your current session dataset on the free plan."); return; }
+                  setScoreMode(key); setError("");
+                }}
+                title={locked ? "Pro plan required" : undefined}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "6px 14px", borderRadius: 6, border: "none",
+                  background: scoreMode === key ? "var(--accent-dim)" : "transparent",
+                  color:      scoreMode === key ? "var(--accent2)" : locked ? "var(--text3)" : "var(--text3)",
+                  fontWeight: scoreMode === key ? 600 : 400,
+                  fontSize: 12, cursor: locked ? "not-allowed" : "pointer",
+                  transition: "all 0.15s", opacity: locked ? 0.6 : 1,
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d={icon} />
+                </svg>
+                {label}
+                {locked && <span style={{ fontSize: 8, fontWeight: 700, color: "var(--accent2)", background: "var(--accent-dim)", border: "1px solid rgba(108,99,255,0.3)", borderRadius: 3, padding: "1px 4px" }}>PRO</span>}
+              </button>
+            );
+          })}
         </div>
 
         {/* Action row */}
@@ -322,6 +335,66 @@ export default function PagePredictions({ setPage }) {
               </>
             )}
           </div>
+
+          {/* Classification: probability distribution chart */}
+          {isClassification && results.predictions?.[0]?.probability !== undefined && (() => {
+            const labels = Object.keys(results.summary || {});
+            const colors = ["var(--accent2)", "var(--cyan)", "var(--green)", "var(--amber)", "var(--red)"];
+            const buckets = { High: 0, Medium: 0, Low: 0 };
+            results.predictions.forEach(p => { if (p.confidence) buckets[p.confidence] = (buckets[p.confidence] || 0) + 1; });
+            const total = results.total || 1;
+            return (
+              <div className="card mb-5 fade-up">
+                <div className="card-title">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={Icons.predict}/></svg>
+                  Prediction Distribution
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {/* Class distribution */}
+                  <div>
+                    <div style={{ fontSize: 11, color: "var(--text3)", fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Class breakdown</div>
+                    <div style={{ display: "flex", height: 20, borderRadius: 4, overflow: "hidden", gap: 1 }}>
+                      {labels.map((label, i) => {
+                        const count = results.summary[label] || 0;
+                        const pct = (count / total) * 100;
+                        return (
+                          <div key={label} title={`${label}: ${count} (${pct.toFixed(1)}%)`}
+                            style={{ width: `${pct}%`, background: colors[i % colors.length], display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#fff", fontFamily: "'DM Mono', monospace", overflow: "hidden", whiteSpace: "nowrap", padding: "0 4px" }}>
+                            {pct > 8 ? label : ""}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: "flex", gap: 12, marginTop: 6, flexWrap: "wrap" }}>
+                      {labels.map((label, i) => (
+                        <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text2)" }}>
+                          <div style={{ width: 8, height: 8, borderRadius: 2, background: colors[i % colors.length] }} />
+                          {label}: {results.summary[label]}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Confidence breakdown */}
+                  {buckets.High + buckets.Medium + buckets.Low > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, color: "var(--text3)", fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Confidence levels</div>
+                      {[["High", "var(--green)"], ["Medium", "var(--amber)"], ["Low", "var(--red)"]].map(([level, color]) => (
+                        buckets[level] > 0 && (
+                          <div key={level} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                            <div style={{ width: 52, fontSize: 11, color: "var(--text2)", textAlign: "right" }}>{level}</div>
+                            <div style={{ flex: 1, height: 8, background: "var(--bg3)", borderRadius: 4, overflow: "hidden" }}>
+                              <div style={{ height: "100%", width: `${(buckets[level] / total) * 100}%`, background: color, borderRadius: 4, transition: "width 0.5s ease" }} />
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--text3)", fontFamily: "'DM Mono', monospace", width: 40 }}>{((buckets[level] / total) * 100).toFixed(0)}%</div>
+                          </div>
+                        )
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Results table */}
           <div className="card fade-up fade-up-1">

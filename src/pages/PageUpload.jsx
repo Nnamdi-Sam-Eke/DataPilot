@@ -161,7 +161,12 @@ export default function PageUpload({ setPage }) {
       }
 
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      if (data.error) {
+        if (data.plan_gate === "pro") {
+          throw new Error(`__PLAN_GATE__${data.error}`);
+        }
+        throw new Error(data.error);
+      }
 
       // Upload complete
       setUploading((prev) => ({ ...prev, [name]: 100 }));
@@ -190,6 +195,10 @@ if (user?.uid) {
       summary: data.summary || null,
       sessionId: data.session_id,
       storageKey: data.storage_key || null,
+      // Persist original upload timestamp and TTL so the timer survives
+      // logout/restore cycles without resetting to full TTL each time.
+      uploadedAt:    data.uploaded_at    || new Date().toISOString(),
+      expiryMinutes: data.expiry_minutes || 90,
     }, currentProjectId);
   } catch (err) {
     console.error("Failed to save dataset to Firestore:", err);
@@ -209,7 +218,7 @@ const sessionPayload = {
   storageKey: data.storage_key || null,
   projectId: currentProjectId || null,
   uploadedAt: data.uploaded_at || new Date().toISOString(),
-  expiryMinutes: data.expiry_minutes || 180,
+  expiryMinutes: data.expiry_minutes || 90,
   preview:
     data.sample && data.columns
       ? { columns: data.columns, rows: data.sample }
@@ -319,6 +328,12 @@ if (user?.uid) {
         animation: showUpload ? "fadeIn 0.4s ease" : undefined,
       }}
     >
+      <style>{`
+        @media (max-width: 640px) {
+          .upload-two-col { grid-template-columns: 1fr !important; }
+          .upload-preview-table { max-height: 220px !important; }
+        }
+      `}</style>
       <div className="page-header">
   <div className="page-title">Upload Dataset</div>
   <div className="page-subtitle">
@@ -332,6 +347,7 @@ if (user?.uid) {
 </div>
 
       <div
+        className="upload-two-col"
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
@@ -462,21 +478,38 @@ if (user?.uid) {
           ))}
 
           {/* Errors */}
-          {Object.entries(errors).map(([name, msg]) => (
-            <div
-              key={name}
-              style={{
-                padding: "10px 14px",
-                background: "rgba(248,113,113,0.08)",
-                border: "1px solid rgba(248,113,113,0.2)",
-                borderRadius: 10,
-                fontSize: 12,
-                color: "var(--red)",
-              }}
-            >
-              <strong>{name}:</strong> {msg}
-            </div>
-          ))}
+          {Object.entries(errors).map(([name, msg]) => {
+            const isPlanGate = msg.startsWith("__PLAN_GATE__");
+            const displayMsg = isPlanGate ? msg.replace("__PLAN_GATE__", "") : msg;
+            return (
+              <div
+                key={name}
+                style={{
+                  padding: "10px 14px",
+                  background: isPlanGate ? "rgba(139,92,246,0.08)" : "rgba(248,113,113,0.08)",
+                  border: `1px solid ${isPlanGate ? "rgba(139,92,246,0.25)" : "rgba(248,113,113,0.2)"}`,
+                  borderRadius: 10,
+                  fontSize: 12,
+                  color: isPlanGate ? "var(--accent)" : "var(--red)",
+                }}
+              >
+                <strong>{name}:</strong> {displayMsg}
+                {isPlanGate && (
+                  <span
+                    onClick={() => setPage("/settings", { state: { highlightSection: "manage-subscription" } })}
+                    style={{
+                      marginLeft: 8,
+                      textDecoration: "underline",
+                      cursor: "pointer",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Upgrade to Pro →
+                  </span>
+                )}
+              </div>
+            );
+          })}
 
           {/* Uploaded Files List */}
           {visibleSessions.length > 0 && (

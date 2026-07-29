@@ -281,10 +281,20 @@ export default function PageAuth() {
           to   { opacity: 1; }
         }
         .auth-input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .auth-mobile-header { display: none; }
         @media (max-width: 480px) {
           .auth-input-row { grid-template-columns: 1fr !important; }
           .auth-split-left { display: none !important; }
-          .auth-split-right { border-radius: 0 !important; min-height: 100vh !important; }
+          .auth-split-right { border-radius: 0 !important; min-height: 100vh !important; padding-top: 80px !important; }
+          .auth-mobile-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            position: absolute;
+            top: 20px;
+            left: 24px;
+            z-index: 10;
+          }
         }
       `}</style>
 
@@ -300,6 +310,23 @@ export default function PageAuth() {
 
         {/* Theme Toggle at the top */}
         <ThemeToggle isDark={isDark} onToggle={toggleTheme} />
+
+        {/* ── MOBILE LOGO BAR (shown only on small screens) ── */}
+        <div className="auth-mobile-header">
+          <div style={{
+            width: 32, height: 32, borderRadius: 9,
+            background: "linear-gradient(135deg, #6c63ff, #a78bfa)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 12, fontWeight: 800, color: "#fff",
+            fontFamily: "'Syne', sans-serif",
+            boxShadow: "0 4px 16px rgba(108,99,255,0.4)",
+          }}>dp</div>
+          <span style={{
+            fontSize: 16, fontWeight: 700,
+            color: "var(--text)",
+            fontFamily: "'Syne', sans-serif",
+          }}>Data<span style={{ color: "var(--accent2)" }}>Pilot</span></span>
+        </div>
 
         {/* ── LEFT PANEL ── */}
         <div className="auth-split-left" style={{

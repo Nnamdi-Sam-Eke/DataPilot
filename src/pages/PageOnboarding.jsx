@@ -10,6 +10,12 @@
  *   onSkip   () => void   → "Skip for now"
  */
 
+/*
+Page Rating: 8.8/10
+Notes: Clean 5-step workflow with colour-coded step cards and CTAs.
+TODOs:
+ - Add animated progression on hover for step cards.
+*/
 import { useMemo } from "react";
 import { Icons } from "../shared/icons.jsx";
 import { useDataPilot } from "../DataPilotContext.jsx";

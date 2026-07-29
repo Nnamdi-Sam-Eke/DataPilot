@@ -578,6 +578,18 @@ section { position: relative; z-index: 1; }
 .pricing-btn-filled { background: linear-gradient(135deg, var(--accent), #7c3aed); border: none; color: #fff; box-shadow: 0 0 30px rgba(108,99,255,0.35); }
 .pricing-btn-filled:hover { box-shadow: 0 0 50px rgba(108,99,255,0.5); transform: translateY(-1px); }
  
+.pro-upgrade-btn {
+  transition: transform 0.25s ease, color 0.25s ease, text-shadow 0.25s ease;
+}
+
+.pro-upgrade-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  color: #ffffff;
+  text-shadow:
+    0 0 8px rgba(108,99,255,0.8),
+    0 0 18px rgba(167,139,250,0.7),
+    0 0 30px rgba(108,99,255,0.5);
+}
 /* CTA */
 .cta-section { padding: 80px 0 120px; }
 .cta-inner { 
@@ -763,7 +775,7 @@ footer {
   <div class="nav-cta">
     <a href="https://data-pilot-eta.vercel.app/" class="btn-ghost">Sign in</a>
     <a href="https://chat.whatsapp.com/BTfpSQWXMDq20BIktqD7ih" target="_blank" class="btn-secondary">
-      Join Community (Beta)
+      Join Community
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
     </a>
   </div>
@@ -774,7 +786,7 @@ footer {
   <div class="hero">
     <div class="hero-eyebrow">
       <div class="hero-eyebrow-dot"></div>
-      · Beta Access Now Open ·
+      · Now Live — Start for Free ·
     </div>
     <h1 class="hero-title">
       <span class="line-1">Your Data.</span>
@@ -786,7 +798,7 @@ footer {
     </p>
     <div class="hero-ctas">
       <a href="https://data-pilot-eta.vercel.app/" target="_blank" class="btn-hero">
-        Join Beta
+        Start for Free
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       </a>
       <a href="#how" class="btn-hero-ghost">
@@ -1178,47 +1190,124 @@ footer {
   <div class="container">
     <div class="pricing-header">
       <div class="section-eyebrow">Pricing</div>
-      <h2 class="section-title">Start free.<br/>Scale when ready.</h2>
+      <h2 class="section-title">Start free.<br/>Upgrade when ready.</h2>
     </div>
-    <div class="pricing-note">🚀 Free during beta — pricing will apply after launch</div>
- 
+    <div class="pricing-note">Free forever. Upgrade to Pro when you need more power.</div>
+
     <!-- Unified split pricing card -->
     <div style="max-width:860px;margin:0 auto;background:var(--bg2);border:1px solid rgba(108,99,255,0.2);border-radius:24px;overflow:hidden;box-shadow:0 0 60px rgba(108,99,255,0.08);" class="fade-up">
       <div class="pricing-split-grid" style="display:grid;grid-template-columns:1fr 1px 1fr;">
- 
+
         <!-- Free column -->
         <div style="padding:36px 40px;">
           <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px;">Free</div>
-          <div style="font-family:'Syne',sans-serif;font-size:42px;font-weight:800;letter-spacing:-2px;color:var(--text);margin-bottom:4px;"><sup style="font-size:20px">$</sup>0</div>
-          <div style="font-size:12px;color:var(--text3);margin-bottom:28px;">Forever free · No card required</div>
-          <div style="height:1px;background:var(--border);margin-bottom:24px;"></div>
-          <ul style="list-style:none;display:flex;flex-direction:column;gap:12px;">
-            <li style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);"><div style="width:16px;height:16px;border-radius:50%;background:rgba(52,211,153,0.15);border:1px solid rgba(52,211,153,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:9px;color:var(--accent3);">✓</div>Upload CSV &amp; Excel files</li>
-            <li style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);"><div style="width:16px;height:16px;border-radius:50%;background:rgba(52,211,153,0.15);border:1px solid rgba(52,211,153,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:9px;color:var(--accent3);">✓</div>Data Overview &amp; Cleaning</li>
-            <li style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);"><div style="width:16px;height:16px;border-radius:50%;background:rgba(52,211,153,0.15);border:1px solid rgba(52,211,153,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:9px;color:var(--accent3);">✓</div>Basic Visualizations</li>
-            <li style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);"><div style="width:16px;height:16px;border-radius:50%;background:rgba(52,211,153,0.15);border:1px solid rgba(52,211,153,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:9px;color:var(--accent3);">✓</div>AI Chat (5 queries/day)</li>
-            <li style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);"><div style="width:16px;height:16px;border-radius:50%;background:rgba(52,211,153,0.15);border:1px solid rgba(52,211,153,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:9px;color:var(--accent3);">✓</div>3-hour session window</li>
-          </ul>
-        </div>
- 
-        <!-- Vertical divider -->
-        <div class="pricing-split-divider" style="background:linear-gradient(to bottom, transparent, rgba(108,99,255,0.3), transparent);"></div>
- 
-        <!-- Pro + Team column -->
-        <div style="padding:36px 40px;display:flex;flex-direction:column;justify-content:center;background:linear-gradient(140deg,rgba(108,99,255,0.06),rgba(167,139,250,0.03));">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
-            <div style="font-family:'DM Mono',monospace;font-size:10px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:var(--accent2);background:rgba(108,99,255,0.1);border:1px solid rgba(108,99,255,0.2);border-radius:6px;padding:5px 12px;">Pro</div>
-            <div style="font-family:'Syne',sans-serif;font-size:16px;color:var(--text3);font-weight:300;">+</div>
-            <div style="font-family:'DM Mono',monospace;font-size:10px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:var(--accent2);background:rgba(108,99,255,0.1);border:1px solid rgba(108,99,255,0.2);border-radius:6px;padding:5px 12px;">Team</div>
+
+          <div style="font-family:'Syne',sans-serif;font-size:42px;font-weight:800;letter-spacing:-2px;color:var(--text);margin-bottom:4px;">
+            <sup style="font-size:20px">$</sup>0
           </div>
-          <div style="font-family:'Syne',sans-serif;font-size:26px;font-weight:700;letter-spacing:-0.5px;color:var(--text);line-height:1.2;margin-bottom:14px;">Pricing unlocks<br/>after beta.</div>
-          <p style="font-size:13.5px;color:var(--text2);line-height:1.65;margin-bottom:28px;">Pro and Team plans are in the works — priced fairly for independent analysts and small teams. Join now and lock in early adopter pricing when Pro and Team launch.</p>
-          <a href="https://data-pilot-eta.vercel.app/" target="_blank" class="pricing-btn pricing-btn-filled" style="display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;border-radius:12px;font-size:14px;padding:14px 24px;width:100%;">
-            Join Beta — It's Free
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+
+          <div style="font-size:12px;color:var(--text3);margin-bottom:28px;">
+            Forever free · No card required
+          </div>
+
+          <div style="height:1px;background:var(--border);margin-bottom:24px;"></div>
+
+          <ul style="list-style:none;display:flex;flex-direction:column;gap:12px;">
+            <li style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);">
+              ✓ Upload CSV &amp; Excel files
+            </li>
+            <li style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);">
+              ✓ Data Overview &amp; Cleaning
+            </li>
+            <li style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);">
+              ✓ Basic Visualizations
+            </li>
+            <li style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);">
+              ✓ AI Chat (5 queries/day)
+            </li>
+            <li style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);">
+              ✓ 3-hour session window
+            </li>
+          </ul>
+
+          <a href="https://data-pilot-eta.vercel.app/" target="_blank" 
+          class="pricing-btn pricing-btn-filled" 
+          style="display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;border-radius:12px;font-size:14px;padding:14px 24px;width:100%;margin-top:32px;">
+            Get Started Free
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
           </a>
         </div>
- 
+
+
+        <!-- Vertical divider -->
+        <div class="pricing-split-divider" style="background:linear-gradient(to bottom, transparent, rgba(108,99,255,0.3), transparent);"></div>
+
+
+        <!-- Pro + Team column -->
+        <div style="padding:36px 40px;display:flex;flex-direction:column;justify-content:center;background:linear-gradient(140deg,rgba(108,99,255,0.06),rgba(167,139,250,0.03));">
+
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+            <div style="font-family:'DM Mono',monospace;font-size:10px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:var(--accent2);background:rgba(108,99,255,0.1);border:1px solid rgba(108,99,255,0.2);border-radius:6px;padding:5px 12px;">
+              Pro
+            </div>
+
+            <div style="font-family:'Syne',sans-serif;font-size:16px;color:var(--text3);font-weight:300;">
+              +
+            </div>
+
+            <div style="font-family:'DM Mono',monospace;font-size:10px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:var(--accent2);background:rgba(108,99,255,0.1);border:1px solid rgba(108,99,255,0.2);border-radius:6px;padding:5px 12px;">
+              Team
+            </div>
+          </div>
+
+
+          <div style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;letter-spacing:-1px;color:var(--text);line-height:1.2;margin-bottom:8px;">
+            $12<span style="font-size:16px;font-weight:400;color:var(--text3);">/month</span>
+          </div>
+
+          <div style="font-size:13px;color:var(--text3);margin-bottom:18px;">
+            Pro plan · Cancel anytime
+          </div>
+
+
+          <p style="font-size:13.5px;color:var(--text2);line-height:1.65;margin-bottom:20px;">
+            Unlock deeper AI analysis, longer sessions, advanced insights, and more capacity for your data workflows.
+          </p>
+
+
+          <ul style="list-style:none;display:flex;flex-direction:column;gap:10px;margin-bottom:22px;">
+            <li style="font-size:13px;color:var(--text2);">✓ Extended AI analysis</li>
+            <li style="font-size:13px;color:var(--text2);">✓ Longer session windows</li>
+            <li style="font-size:13px;color:var(--text2);">✓ Advanced visualizations</li>
+            <li style="font-size:13px;color:var(--text2);">✓ Priority processing</li>
+          </ul>
+
+
+          <a href="https://data-pilot-eta.vercel.app/" target="_blank"
+  class="pricing-btn pro-upgrade-btn"
+  style="display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;border-radius:12px;font-size:14px;padding:14px 24px;width:100%;background:transparent;border:1px solid rgba(108,99,255,0.5);color:var(--accent2);">
+    Upgrade to Pro
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M5 12h14M12 5l7 7-7 7"/>
+    </svg>
+</a>
+
+
+          <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border);">
+            <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;">
+              Teams
+            </div>
+
+            <p style="font-size:13px;color:var(--text2);line-height:1.6;margin:0;">
+              Need DataPilot for your team? Team plans are available by request.
+              Contact sales for custom requirements and pricing.
+            </p>
+          </div>
+
+        </div>
+
       </div>
     </div>
   </div>
@@ -1230,10 +1319,10 @@ footer {
     <div class="cta-inner fade-up">
       <div class="cta-eyebrow">Ready to take flight?</div>
       <h2 class="cta-title">Your data has<br/>stories to tell.</h2>
-      <p class="cta-sub">You're early. That's exactly the point. DataPilot is in active beta and the analysts who join now will help shape what it becomes — including pricing, features, and direction.</p>
+      <p class="cta-sub">DataPilot is live and free to use — no setup, no code, no card required. Upload your data and go from raw CSV to client-ready report in a single session.</p>
       <div class="cta-ctas">
         <a href="https://data-pilot-eta.vercel.app/" target="_blank" class="btn-hero">
-          Join Beta
+          Get Started Free
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </a>
         <a href="#features" class="btn-hero-ghost">Explore Features</a>

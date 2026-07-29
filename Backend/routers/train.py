@@ -18,7 +18,12 @@ MODEL_STORE: Dict[str, Any] = {}
 MAX_MODELS = 4
 
 # How long a trained model lives in memory before the cleanup loop evicts it
-MODEL_EXPIRY_MINUTES = 20
+MODEL_EXPIRY_MINUTES_FREE = 10
+MODEL_EXPIRY_MINUTES_PRO  = 60
+MODEL_EXPIRY_MINUTES      = MODEL_EXPIRY_MINUTES_FREE  # default (used by file_store.py import)
+
+# Algorithms restricted to Pro plan
+_PRO_ONLY_ALGORITHMS = {"xgb", "svm"}
 
 def sanitize(obj):
     if isinstance(obj, dict):
@@ -53,13 +58,34 @@ async def train_model(payload: Dict):
     """
     from routers.upload import get_session
 
-    session_id = payload.get("session_id")
+    session_id    = payload.get("session_id")
     target_column = payload.get("target_column")
-    model_type = payload.get("model_type", "rf")
-    test_size = float(payload.get("test_size", 0.2))
+    model_type    = payload.get("model_type", "rf")
+    test_size     = float(payload.get("test_size", 0.2))
+    plan          = str(payload.get("plan", "free")).strip().lower()
+    is_pro        = plan == "pro"
 
     if not session_id or not target_column:
         raise HTTPException(status_code=400, detail="session_id and target_column are required.")
+
+    # Gate XGBoost and SVM behind Pro
+    if model_type in _PRO_ONLY_ALGORITHMS and not is_pro:
+        raise HTTPException(
+            status_code=403,
+            detail=f"The '{model_type.upper()}' algorithm is available on the Pro plan. Upgrade to unlock XGBoost and SVM.",
+        )
+
+    # Free plan: enforce 1 trained model per session
+    if not is_pro:
+        session_models = [
+            mid for mid, m in MODEL_STORE.items()
+            if m.get("session_id") == session_id
+        ]
+        if session_models:
+            raise HTTPException(
+                status_code=403,
+                detail="Free plan allows 1 trained model per session. Delete your current model or upgrade to Pro for multiple models.",
+            )
 
     df = get_session(session_id)
     if df is None:
@@ -223,11 +249,12 @@ async def train_model(payload: Dict):
 
         # Store model for predictions and export
         model_id = str(uuid.uuid4())
+        expiry   = MODEL_EXPIRY_MINUTES_PRO if is_pro else MODEL_EXPIRY_MINUTES_FREE
         MODEL_STORE[model_id] = {
             "model": model,
             "scaler": scaler if use_scaled else None,
             "feature_columns": X.columns.tolist(),
-            "feature_label_encoders": feature_label_encoders,  # fitted per-column encoders
+            "feature_label_encoders": feature_label_encoders,
             "target_column": target_column,
             "is_classification": is_classification,
             "label_encoder": le_y,
@@ -236,7 +263,9 @@ async def train_model(payload: Dict):
             "train_size": train_size_val,
             "test_size": test_size_val,
             "created_at": datetime.utcnow(),
-            "expiry_minutes": MODEL_EXPIRY_MINUTES,
+            "expiry_minutes": expiry,
+            "session_id": session_id,   # used for free-plan 1-model enforcement
+            "plan": plan,
         }
 
         logger.info(f"✅ Model trained: {model_type}, model_id={model_id}")

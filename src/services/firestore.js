@@ -34,6 +34,7 @@ export async function incrementTotalRowsProcessed(userId, rows) {
     // If the user doc doesn't exist, create it with the initial value.
     await setDoc(userRef, {
       totalRowsProcessed: rows,
+      plan: "free",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }, { merge: true });
@@ -58,6 +59,7 @@ export async function saveUserProfile(user, extra = {}) {
   const payload = {
     uid: user.uid,
     email: extra.email ?? user.email ?? "",
+    plan: extra.plan ?? "free",
     updatedAt: serverTimestamp(),
   };
 
@@ -159,17 +161,20 @@ export async function saveDataset(userId, dataset, projectId = null) {
   const datasetsRef = collection(db, "users", userId, "datasets");
 
   const payload = {
-    fileName:     dataset.fileName     || "",
-    fileSize:     dataset.fileSize     || 0,
-    lastModified: dataset.lastModified || 0,
-    rowCount:     dataset.rowCount     || 0,
-    columns:      dataset.columns      || [],
-    summary:      dataset.summary      || null,
-    sessionId:    dataset.sessionId    || null,
-    storageKey:   dataset.storageKey   || null,  // B2 key for cross-device restore
-    projectId:    projectId            || null,
-    createdAt:    serverTimestamp(),
-    updatedAt:    serverTimestamp(),
+    fileName:      dataset.fileName      || "",
+    fileSize:      dataset.fileSize      || 0,
+    lastModified:  dataset.lastModified  || 0,
+    rowCount:      dataset.rowCount      || 0,
+    columns:       dataset.columns       || [],
+    summary:       dataset.summary       || null,
+    sessionId:     dataset.sessionId     || null,
+    storageKey:    dataset.storageKey    || null,
+    // Timer fields — preserved across logout/restore cycles
+    uploadedAt:    dataset.uploadedAt    || null,
+    expiryMinutes: dataset.expiryMinutes || 90,
+    projectId:     projectId             || null,
+    createdAt:     serverTimestamp(),
+    updatedAt:     serverTimestamp(),
   };
 
   const docRef = await addDoc(datasetsRef, payload);

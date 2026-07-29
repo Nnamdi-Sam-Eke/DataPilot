@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";   // ← Fixed: added useEffect
-import { useDataPilot } from "../DataPilotContext.jsx";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";
 import { saveUserProfile } from "../services/firestore";
 
 
@@ -76,37 +77,58 @@ function PlanBadge({ plan }) {
 
 // ── main page ─────────────────────────────────────────────────────────────────
 export default function PageSettings() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const ctx = useDataPilot();
   const { user, logout } = ctx;
 
   // Extract context values with fallbacks
-  const groqKey       = ctx.groqKey       ?? "";
-  const setGroqKey    = ctx.setGroqKey    ?? (() => {});
-  const userProfile = ctx.userProfile ?? { displayName: "", email: "", plan: "Pro" };
+  const userProfile    = ctx.userProfile    ?? { displayName: "", email: "", plan: "free" };
   const setUserProfile = ctx.setUserProfile ?? (() => {});
-  const theme         = ctx.theme         ?? "dark";
-  const toggleTheme   = ctx.toggleTheme   ?? (() => {});
-  const accentColor   = ctx.accentColor   ?? "#6c63ff";
-  const setAccentColor= ctx.setAccentColor?? (() => {});
-  const reset         = ctx.reset         ?? (() => {});
-  const sessions      = ctx.sessions      ?? [];
-  const savedPlots    = ctx.savedPlots    ?? [];
-  const trainResults  = ctx.trainResults  ?? null;
-  const chatMessages  = ctx.chatMessages  ?? [];
+  const theme          = ctx.theme          ?? "dark";
+  const toggleTheme    = ctx.toggleTheme    ?? (() => {});
+  const accentColor    = ctx.accentColor    ?? "#6c63ff";
+  const setAccentColor = ctx.setAccentColor ?? (() => {});
+  const reset          = ctx.reset          ?? (() => {});
+  const sessions       = ctx.sessions       ?? [];
+  const savedPlots     = ctx.savedPlots     ?? [];
+  const trainResults   = ctx.trainResults   ?? null;
+  const chatMessages   = ctx.chatMessages   ?? [];
+
+  // Highlight the "Your Plan" card, but ONLY when we arrived here via an
+  // "Upgrade to Pro" CTA elsewhere in the app. That CTA passes
+  // setPage("/settings", { state: { highlightSection: "manage-subscription" } }).
+  // Regular navigation (sidebar, back button, refresh, typing the URL) never
+  // sets this state, so the scroll/pulse never fires for organic visits.
+  const planCardRef = useRef(null);
+  const [highlightPlanCard, setHighlightPlanCard] = useState(false);
+
+  useEffect(() => {
+    if (location.state?.highlightSection === "manage-subscription") {
+      planCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      setHighlightPlanCard(true);
+      const timer = setTimeout(() => setHighlightPlanCard(false), 2400);
+
+      // Clear the state right away so a refresh, re-render, or navigating
+      // back to this same history entry doesn't re-trigger the highlight.
+      navigate(location.pathname, { replace: true, state: {} });
+
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Local state for form inputs
- const [displayName, setDisplayName] = useState(userProfile?.displayName || "");
- const [email,       setEmail]       = useState(userProfile?.email       || "");
- const [profileSaved, setProfileSaved] = useState(false);
-
-  const [keyInput,    setKeyInput]    = useState(groqKey || "");
-  const [showKey,     setShowKey]     = useState(false);
-  const [keySaved,    setKeySaved]    = useState(false);
-  const [keyCopied,   setKeyCopied]   = useState(false);
-  const [keyTesting,  setKeyTesting]  = useState(false);
-  const [keyStatus,   setKeyStatus]   = useState(null); // null | "ok" | "fail"
-
+  const [displayName,  setDisplayName]  = useState(userProfile?.displayName || "");
+  const [email,        setEmail]        = useState(userProfile?.email       || "");
+  const [profileSaved, setProfileSaved] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+
+  // Platform status state
+  const [backendStatus,  setBackendStatus]  = useState(null); // null | "online" | "offline"
+  const [statusChecking, setStatusChecking] = useState(false);
+
 
   // Sync local form state with context (so displayName loads from Firestore)
   useEffect(() => {
@@ -137,41 +159,17 @@ export default function PageSettings() {
   }
 };
 
-  const handleSaveKey = () => {
-    setGroqKey(keyInput.trim());
-    setKeySaved(true);
-    setKeyStatus(null);
-    setTimeout(() => setKeySaved(false), 2500);
-  };
-
-  const handleRemoveKey = () => {
-    setKeyInput("");
-    setGroqKey("");
-    setKeyStatus(null);
-  };
-
-  const handleCopyKey = () => {
-    if (!keyInput) return;
-    navigator.clipboard.writeText(keyInput).then(() => {
-      setKeyCopied(true);
-      setTimeout(() => setKeyCopied(false), 2000);
-    });
-  };
-
-  const handleTestKey = async () => {
-    const k = keyInput.trim();
-    if (!k) return;
-    setKeyTesting(true);
-    setKeyStatus(null);
+  // Platform status check
+  const handleCheckStatus = async () => {
+    setStatusChecking(true);
+    setBackendStatus(null);
     try {
-      const res = await fetch("https://api.groq.com/openai/v1/models", {
-        headers: { Authorization: `Bearer ${k}` },
-      });
-      setKeyStatus(res.ok ? "ok" : "fail");
+      const res = await fetch(`${API_BASE}/health`, { cache: "no-store" });
+      setBackendStatus(res.ok ? "online" : "offline");
     } catch {
-      setKeyStatus("fail");
+      setBackendStatus("offline");
     } finally {
-      setKeyTesting(false);
+      setStatusChecking(false);
     }
   };
 
@@ -193,10 +191,6 @@ export default function PageSettings() {
     { label: "AI conversations",   value: chatMessages?.filter(m => m.role === "user")?.length || 0 },
   ];
 
-  const maskedKey = keyInput 
-    ? keyInput.slice(0, 8) + "•".repeat(Math.max(0, keyInput.length - 12)) + keyInput.slice(-4) 
-    : "";
-
   return (
     <div className="page-enter">
       {/* Header */}
@@ -205,7 +199,7 @@ export default function PageSettings() {
           <div className="page-title">Settings</div>
           <div className="page-subtitle">Manage your profile, API keys, appearance, and workspace data</div>
         </div>
-        <PlanBadge plan={userProfile?.plan || "Pro"} />
+        <PlanBadge plan={userProfile?.plan || "free"} />
       </div>
       
 
@@ -242,83 +236,63 @@ export default function PageSettings() {
 </div>
           </Section>
 
-          {/* Groq API Key */}
+          {/* Platform Status */}
           <Section
-            icon={<IcoKey size={16} />}
-            title="Groq API Key"
-            subtitle="Powers Ask DataPilot AI. Your own key gives higher limits and privacy.">
+            icon={<IcoDatabase size={16} />}
+            title="Platform Status"
+            subtitle="Live connection status and AI configuration for this DataPilot instance.">
 
-            {/* Status feedback */}
-            {keyStatus === "ok" && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.2)", borderRadius: 9, fontSize: 12, color: "var(--green)", marginBottom: 14 }}>
-                <IcoCheck /> Key is valid and working
+            <FieldRow label="Backend server" hint="">
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{
+                  width: 9, height: 9, borderRadius: "50%", flexShrink: 0,
+                  background: backendStatus === "online" ? "var(--green)" : backendStatus === "offline" ? "var(--red)" : "var(--text3)",
+                  boxShadow: backendStatus === "online" ? "0 0 6px var(--green)" : "none",
+                }} />
+                <span style={{ fontSize: 12.5, color: backendStatus === "online" ? "var(--green)" : backendStatus === "offline" ? "var(--red)" : "var(--text2)", fontFamily: "'DM Mono', monospace" }}>
+                  {backendStatus === "online" ? "Online" : backendStatus === "offline" ? "Offline / sleeping" : "Not checked yet"}
+                </span>
+                <button
+                  className="btn-secondary"
+                  onClick={handleCheckStatus}
+                  disabled={statusChecking}
+                  style={{ padding: "5px 12px", fontSize: 11, marginLeft: "auto" }}>
+                  {statusChecking
+                    ? <><svg className="spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12a9 9 0 11-6.219-8.56"/></svg> Checking…</>
+                    : <><IcoRefresh /> Check now</>
+                  }
+                </button>
               </div>
-            )}
-            {keyStatus === "fail" && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: 9, fontSize: 12, color: "var(--red)", marginBottom: 14 }}>
-                ✕ Invalid key — check and try again
-              </div>
-            )}
+            </FieldRow>
 
-            <FieldRow
-              label="API Key"
-              hint={<>Get your key at <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" style={{ color: "var(--accent2)" }}>console.groq.com</a>. Free tier is generous.</>}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ position: "relative" }}>
-                  <input
-                    className="input-field"
-                    type={showKey ? "text" : "password"}
-                    value={keyInput}
-                    onChange={e => { setKeyInput(e.target.value); setKeyStatus(null); }}
-                    placeholder="gsk_••••••••••••••••••••••••••••••••"
-                    style={{ width: "100%", fontSize: 13, paddingRight: 44, fontFamily: "'DM Mono', monospace" }}
-                  />
-                  <button 
-                    onClick={() => setShowKey(v => !v)}
-                    style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--text3)", padding: 2 }}
-                  >
-                    {showKey ? <IcoEyeOff size={16} /> : <IcoEye size={16} />}
-                  </button>
-                </div>
-
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button className="btn-primary" onClick={handleSaveKey} disabled={!keyInput.trim()}>
-                    {keySaved ? <><IcoCheck /> Saved</> : "Save Key"}
-                  </button>
-                  <button className="btn-secondary" onClick={handleTestKey} disabled={!keyInput.trim() || keyTesting}>
-                    {keyTesting ? <><svg className="spin" width="12" height="12" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-6.219-8.56" /></svg> Testing…</> : <><IcoRefresh /> Test</>}
-                  </button>
-                  <button className="btn-secondary" onClick={handleCopyKey} disabled={!keyInput}>
-                    {keyCopied ? <IcoCheck /> : <IcoCopy />}
-                  </button>
-                  {keyInput && (
-                    <button className="btn-secondary" onClick={handleRemoveKey}
-                      style={{ color: "var(--red)", borderColor: "rgba(248,113,113,0.2)" }}>
-                      Remove
-                    </button>
-                  )}
+            <FieldRow label="AI model" hint="Served via Groq — fastest open-source inference available">
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ padding: "4px 10px", borderRadius: 6, background: "var(--accent-dim)", border: "1px solid rgba(108,99,255,0.25)", fontSize: 11.5, fontFamily: "'DM Mono', monospace", color: "var(--accent2)" }}>
+                  llama-3.3-70b-versatile
                 </div>
               </div>
             </FieldRow>
 
-            {/* How it works */}
-            <div style={{ marginTop: 14, padding: "12px 14px", background: "var(--bg3)", borderRadius: 9, border: "1px solid var(--border)" }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text2)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'DM Mono', monospace" }}>
-                How it works
-              </div>
-              {[
-                { step: "1", text: "Your key is stored only in your browser — never sent to our servers" },
-                { step: "2", text: "Passed directly from your browser to Groq on each AI query" },
-                { step: "3", text: "No key? Uses shared server key (rate-limited)" },
-              ].map(({ step, text }) => (
-                <div key={step} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 6 }}>
-                  <div style={{ width: 18, height: 18, borderRadius: 5, background: "var(--accent-dim)", border: "1px solid rgba(108,99,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: "var(--accent2)", flexShrink: 0, fontFamily: "'DM Mono', monospace" }}>
-                    {step}
+            <FieldRow label="Inference provider" hint="All AI queries are processed server-side. Your data never leaves our backend">
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {[
+                  { label: "Provider", value: "Groq Cloud" },
+                  { label: "Data handling", value: "Server-side only" },
+                  { label: "Latency", value: "200-500ms per query" },
+
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", background: "var(--bg3)", borderRadius: 7, border: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: 11.5, color: "var(--text3)" }}>{label}</span>
+                    <span style={{ fontSize: 11.5, color: "var(--text2)", fontFamily: "'DM Mono', monospace" }}>{value}</span>
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>{text}</div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </FieldRow>
+
+            <FieldRow label="Send feedback" hint="Found a bug or want a feature? We're available 24/7 and reading everything.">
+              <div style={{ fontSize: 12.5, color: "var(--text2)" }}>
+                Use the feedback button          </div>
+            </FieldRow>
           </Section>
 
           {/* Data Management */}
@@ -369,12 +343,16 @@ export default function PageSettings() {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
           {/* Plan Overview */}
-          <div className="card" style={{ background: "linear-gradient(135deg, rgba(108,99,255,0.08) 0%, rgba(108,99,255,0.02) 100%)", border: "1px solid rgba(108,99,255,0.2)" }}>
+          <div
+            ref={planCardRef}
+            className={`card${highlightPlanCard ? " highlight-pulse" : ""}`}
+            style={{ background: "linear-gradient(135deg, rgba(108,99,255,0.08) 0%, rgba(108,99,255,0.02) 100%)", border: "1px solid rgba(108,99,255,0.2)" }}
+          >
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
               <IcoStar size={16} />
               <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Your Plan</span>
             </div>
-            <PlanBadge plan={userProfile?.plan || "Pro"} />
+            <PlanBadge plan={userProfile?.plan || "free"} />
             <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
               {[
                 "Unlimited local datasets",
@@ -390,7 +368,7 @@ export default function PageSettings() {
                 </div>
               ))}
             </div>
-            <button className="btn-secondary" style={{ width: "100%", marginTop: 16, justifyContent: "center" }}>
+            <button className="btn-secondary" style={{ width: "100%", marginTop: 16, justifyContent: "center" }} onClick={() => navigate("/billing")}>
               Manage Subscription
             </button>
           </div>

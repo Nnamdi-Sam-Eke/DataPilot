@@ -89,7 +89,22 @@ function clearState() {
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function DataPilotProvider({ children }) {
-  const p = loadState();
+  const _raw = loadState();
+
+  // Guard: if sessions is empty in localStorage, the derived fields
+  // (sessionId, columns, summary, fileName, activeWorkspace) must also be
+  // cleared — they can linger from a previous delete cycle and cause analysis
+  // pages to render stale data while the dashboard correctly shows 0 datasets.
+  const p = (_raw?.sessions?.length === 0 || !_raw?.sessions)
+    ? { ..._raw, sessionId: null, columns: [], summary: null, fileName: "", rowCount: 0, activeWorkspace: null }
+    : _raw;
+
+  // Clean up legacy localStorage keys from older versions of the app
+  // that are no longer read but accumulate across sessions.
+  useEffect(() => {
+    localStorage.removeItem("dp_sessions");
+    localStorage.removeItem("dp_projects");
+  }, []);
 
   // ── Theme & Accent ────────────────────────────────────────────────────
   const [theme, setTheme] = useState(() => {
@@ -111,7 +126,7 @@ export function DataPilotProvider({ children }) {
   const [user,        setUser]        = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [userProfile, setUserProfileRaw] = useState(
-    p?.userProfile || { displayName: "", email: "", plan: "Pro" }
+    p?.userProfile || { displayName: "", email: "", plan: "free" }
   );
 
   // ── Projects ──────────────────────────────────────────────────────────
@@ -390,7 +405,7 @@ export function DataPilotProvider({ children }) {
     const newestModel = trainedModels[trainedModels.length - 1];
     if (!newestModel?.model_id || newestModel.r2Key) return;
 
-    saveModelToCloud(datasetDocId, newestModel.model_id, API_BASE)
+    saveModelToCloud(datasetDocId, newestModel.model_id, API_BASE, userProfile?.plan || "free", user)
       .then(r2Key => {
         // Attach r2Key to the model entry and persist metadata to Firestore
         const updatedModels = trainedModels.map(m =>
@@ -431,7 +446,7 @@ export function DataPilotProvider({ children }) {
         // Load profile
         try {
           const userSnap = await getDoc(doc(db, "users", firebaseUser.uid));
-          let profileData = { displayName: "", email: firebaseUser.email || "", plan: "Pro" };
+          let profileData = { displayName: "", email: firebaseUser.email || "", plan: "free" };
           if (userSnap.exists()) {
             const data = userSnap.data();
             profileData = {
@@ -439,6 +454,12 @@ export function DataPilotProvider({ children }) {
               displayName: data.displayName || `${data.firstName || ""} ${data.lastName || ""}`.trim(),
               firstName:   data.firstName || "",
               lastName:    data.lastName  || "",
+              plan:        (data.plan || "free").toLowerCase(),
+              subscriptionStatus: data.subscription_status || null,
+              subscriptionId:     data.subscription_id || null,
+              currentPeriodEnd:   data.current_period_end
+                ? (data.current_period_end.toDate ? data.current_period_end.toDate().toISOString() : data.current_period_end)
+                : null,
             };
             const persistedTotal = data?.totalRowsProcessed || data?.total_rows_processed || 0;
             setTotalRowsProcessedRaw(persistedTotal);
@@ -487,7 +508,7 @@ export function DataPilotProvider({ children }) {
               summary:       d.summary       || null,
               projectId:     d.projectId     || null,
               uploadedAt:    d.uploadedAt    || null,
-              expiryMinutes: d.expiryMinutes || 180,
+              expiryMinutes: d.expiryMinutes || 90,
               storageKey:    d.storageKey    || null,  // R2 key for cross-device restore
               preview:       null,
               // Merge saved workspace from localStorage
@@ -587,10 +608,14 @@ export function DataPilotProvider({ children }) {
 
               try {
                 // Single backend call — R2 fetch + session creation happens server-side
-                const plan = "pro"; // beta users all get pro
-                const res  = await fetch(`${API_BASE}/session/restore`, {
+                const plan  = (profileData?.plan || "free").toLowerCase();
+                const token = await firebaseUser.getIdToken();
+                const res   = await fetch(`${API_BASE}/session/restore`, {
                   method:  "POST",
-                  headers: { "Content-Type": "application/json" },
+                  headers: {
+                    "Content-Type":  "application/json",
+                    "Authorization": `Bearer ${token}`,
+                  },
                   body:    JSON.stringify({ storage_key: storageKey, plan }),
                 });
 
@@ -617,14 +642,28 @@ export function DataPilotProvider({ children }) {
                     : prev;
                 });
 
+                // Timer logic after B2 restore:
+                // - If Render spun down mid-session (original timer still valid),
+                //   preserve uploadedAt so the countdown continues from where it was.
+                // - If the original timer has fully elapsed (user came back after expiry),
+                //   reset uploadedAt to now so they get a fresh TTL from the restore.
+                const originalUploadedAt = s.uploadedAt ? new Date(s.uploadedAt).getTime() : null;
+                const originalExpiry     = (s.expiryMinutes || 90) * 60 * 1000;
+                const timerElapsed       = originalUploadedAt
+                  ? Date.now() > originalUploadedAt + originalExpiry
+                  : true;
+
+                const resolvedUploadedAt    = timerElapsed ? new Date().toISOString() : s.uploadedAt;
+                const resolvedExpiryMinutes = s.expiryMinutes || data.expiry_minutes || 90;
+
                 return {
                   ...s,
                   sessionId:     newSessionId,
-                  rowCount:      data.row_count      || s.rowCount,
-                  columns:       data.columns        || s.columns,
-                  summary:       data.summary        || s.summary,
-                  uploadedAt:    data.uploaded_at    || new Date().toISOString(),
-                  expiryMinutes: data.expiry_minutes || s.expiryMinutes,
+                  rowCount:      data.row_count  || s.rowCount,
+                  columns:       data.columns    || s.columns,
+                  summary:       data.summary    || s.summary,
+                  uploadedAt:    resolvedUploadedAt,
+                  expiryMinutes: resolvedExpiryMinutes,
                   expired:       false,
                   preview:       null,
                 };
@@ -721,7 +760,7 @@ export function DataPilotProvider({ children }) {
                       cloudData.trainedModelsMetadata.map(async (m) => {
                         if (!m.r2Key) return m;
                         try {
-                          const restored = await restoreModelFromCloud(m.r2Key, API_BASE);
+                          const restored = await restoreModelFromCloud(m.r2Key, API_BASE, firebaseUser);
                           return { ...m, model_id: restored.model_id, metrics: restored.metrics, feature_importance: restored.feature_importance };
                         } catch { return m; }
                       })
@@ -1032,14 +1071,17 @@ const promoteCleanedSession = useCallback(async (oldSessionId, promoteResponse) 
   // We perform the Snapshot FIRST. This way, the UI never sees a 'null' or 'stale' key.
   let newStorageKey = null;
   try {
+    const snapHeaders = { "Content-Type": "application/json" };
+    if (user) {
+      snapHeaders.Authorization = `Bearer ${await user.getIdToken()}`;
+    }
     const snapRes = await fetch(`${API_BASE}/session/snapshot`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: snapHeaders,
       body: JSON.stringify({
   session_id:     newSessionId,
   file_name:      promoteResponse.fileName || `cleaned_${newSessionId.slice(0, 8)}`,
   dataset_doc_id: originalDocId || "",
-  uid:            user?.uid     || "",
 }),
     });
     if (snapRes.ok) {
@@ -1123,11 +1165,21 @@ const promoteCleanedSession = useCallback(async (oldSessionId, promoteResponse) 
 
   // 5. Cleanup the old file (Safe to do now because state and Firestore are updated)
   if (newStorageKey && originalStorageKey && newStorageKey !== originalStorageKey) {
-    fetch(`${API_BASE}/file/delete`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ storage_key: originalStorageKey }),
-    }).catch((e) => console.warn("Cleanup failed:", e));
+    (async () => {
+      try {
+        const delHeaders = { "Content-Type": "application/json" };
+        if (user) {
+          delHeaders.Authorization = `Bearer ${await user.getIdToken()}`;
+        }
+        await fetch(`${API_BASE}/file/delete`, {
+          method: "DELETE",
+          headers: delHeaders,
+          body: JSON.stringify({ storage_key: originalStorageKey }),
+        });
+      } catch (e) {
+        console.warn("Cleanup failed:", e);
+      }
+    })();
   }
 
     // 5. Fetch preview data for the cleaned session (with retries for transient 404s)
@@ -1173,11 +1225,21 @@ const promoteCleanedSession = useCallback(async (oldSessionId, promoteResponse) 
     }
     // Delete the file from B2 so storage doesn't accumulate orphaned files
     if (sessionToRemove?.storageKey) {
-      fetch(`${API_BASE}/file/delete`, {
-        method:  "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ storage_key: sessionToRemove.storageKey }),
-      }).catch(() => {});
+      (async () => {
+        try {
+          const delHeaders = { "Content-Type": "application/json" };
+          if (user) {
+            delHeaders.Authorization = `Bearer ${await user.getIdToken()}`;
+          }
+          await fetch(`${API_BASE}/file/delete`, {
+            method:  "DELETE",
+            headers: delHeaders,
+            body:    JSON.stringify({ storage_key: sessionToRemove.storageKey }),
+          });
+        } catch {
+          /* non-fatal — orphaned B2 file, cleaned up on a future pass */
+        }
+      })();
     }
     if (sessionToRemove?.sessionId && user?.uid) {
       deleteDataset(user.uid, sessionToRemove.id, sessionToRemove.projectId || null).catch((err) => {
@@ -1219,7 +1281,7 @@ const promoteCleanedSession = useCallback(async (oldSessionId, promoteResponse) 
     resetWorkspaceState();
     setSessionsRaw([]);
     setGroqKeyRaw("");
-    setUserProfileRaw({ displayName: "", email: "", plan: "Pro" });
+    setUserProfileRaw({ displayName: "", email: "", plan: "free" });
     setTheme("dark");
     setAccentColor("#6c63ff");
     setProjectsRaw([]);

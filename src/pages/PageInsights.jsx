@@ -144,7 +144,12 @@ export default function PageInsights({ setPage }) {
     chatMessages,
     setChatMessages,
     activeSessionExpired,
+    user,
+    userProfile,
   } = useDataPilot();
+
+  const plan = (userProfile?.plan || "free").toLowerCase();
+  const isPro = plan === "pro";
 
   const greeting =
     sessionId && !activeSessionExpired
@@ -155,7 +160,7 @@ export default function PageInsights({ setPage }) {
 
   // Init from persisted context first — context already survives refresh via datapilot_state
   const [messages, setMessages] = useState(
-    chatMessages?.length ? chatMessages : [{ role: "ai", text: greeting }]
+    chatMessages?.length ? chatMessages : [{ role: "ai", text: greeting, ts: Date.now() }]
   );
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -174,7 +179,7 @@ export default function PageInsights({ setPage }) {
     if (prevSessionRef.current === sessionId) return;
     prevSessionRef.current = sessionId;
     // Context will have null chatMessages after a session switch (removeSession/switchSession clears it)
-    setMessages([{ role: "ai", text: greeting }]);
+    setMessages([{ role: "ai", text: greeting, ts: Date.now() }]);
   // greeting intentionally omitted — only sessionId/expired switching should trigger a reset
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, activeSessionExpired]);
@@ -200,22 +205,23 @@ export default function PageInsights({ setPage }) {
   }, [messages, loading]);
 
   const handleSend = async (text) => {
+    const canSend = sessionId && !activeSessionExpired && !loading;
     const msg = (text || input).trim();
-    if (!msg || !sessionId || activeSessionExpired || loading) return;
+    if (!msg || !canSend) return;
 
-    setMessages((m) => [...m, { role: "user", text: msg }]);
+    setMessages((m) => [...m, { role: "user", text: msg, ts: Date.now() }]);
     setInput("");
     setLoading(true);
 
     try {
       const res = await fetch(`${API_BASE}/insights/`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: msg,
           session_ids: [sessionId],
+          uid:  user?.uid  || "",
+          plan: plan,
         }),
       });
 
@@ -223,12 +229,12 @@ export default function PageInsights({ setPage }) {
 
       setMessages((m) => [
         ...m,
-        { role: "ai", text: data.error ? `⚠️ ${data.error}` : data.response },
+        { role: "ai", text: data.error ? `⚠️ ${data.error}` : data.response, ts: Date.now() },
       ]);
     } catch {
       setMessages((m) => [
         ...m,
-        { role: "ai", text: "⚠️ Network error — is the backend running?" },
+        { role: "ai", text: "⚠️ Network error — is the backend running?", ts: Date.now() },
       ]);
     } finally {
       setLoading(false);
@@ -265,7 +271,7 @@ export default function PageInsights({ setPage }) {
                 <button
                   className="btn-secondary"
                   style={{ padding: "5px 10px", fontSize: 11 }}
-                  onClick={() => setMessages([{ role: "ai", text: greeting }])}
+                  onClick={() => setMessages([{ role: "ai", text: greeting, ts: Date.now() }])}
                 >
                   Clear chat
                 </button>
@@ -321,10 +327,17 @@ export default function PageInsights({ setPage }) {
                   <div className={`chat-avatar ${m.role}`}>
                     {m.role === "ai" ? "✦" : "U"}
                   </div>
-                  <div className={`chat-bubble ${m.role}`}>
-                    <div style={{ whiteSpace: "pre-line" }}>
-                      <RichText text={m.text} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
+                    <div className={`chat-bubble ${m.role}`}>
+                      <div style={{ whiteSpace: "pre-line" }}>
+                        <RichText text={m.text} />
+                      </div>
                     </div>
+                    {m.ts && (
+                      <div style={{ fontSize: 9.5, color: "var(--text3)", fontFamily: "'DM Mono', monospace", paddingLeft: 2, paddingRight: 2 }}>
+                        {new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

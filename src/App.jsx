@@ -41,25 +41,31 @@ import PagePredictions  from "./pages/PagePredictions.jsx";
 import PageCleaning     from "./pages/PageCleaning.jsx";
 import PageCodeGen      from "./pages/PageCodeGen.jsx";
 import PageSettings     from "./pages/PageSettings.jsx";
+import PagePricing      from "./pages/PagePricing.jsx";
+import PageBilling      from "./pages/PageBilling.jsx";
+import PaymentSuccess from "./pages/PageSuccess.jsx";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-const WARN_AT_MINUTES = 30;
+const WARN_AT_MINUTES = 15;
 
 // ── Route → page name map (for Sidebar/Topbar active state) ───────────────────
 
 const PATH_TO_PAGE = {
-  "/dashboard":    "dashboard",
-  "/upload":       "upload",
-  "/overview":     "overview",
-  "/insights":     "insights",
-  "/visualization":"visualization",
-  "/train":        "train",
-  "/report":       "report",
-  "/predictions":  "predictions",
-  "/cleaning":     "cleaning",
-  "/codegen":      "codegen",
-  "/settings":     "settings",
+  "/dashboard": "dashboard",
+  "/upload": "upload",
+  "/overview": "overview",
+  "/insights": "insights",
+  "/visualization": "visualization",
+  "/train": "train",
+  "/report": "report",
+  "/predictions": "predictions",
+  "/cleaning": "cleaning",
+  "/codegen": "codegen",
+  "/settings": "settings",
+  "/pricing": "pricing",
+  "/billing": "billing",
+  "/payment/success": "payment-success",
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -371,8 +377,8 @@ function AppShell() {
     }
   };
 
-  const goTo = (path) => {
-    navigate(path);
+  const goTo = (path, options) => {
+    navigate(path, options);
     setSidebarOpen(false);
   };
 
@@ -458,6 +464,10 @@ function AppShell() {
   <Route path="/report"        element={<PageReport setPage={goTo} />} />
   <Route path="/codegen"       element={<PageCodeGen setPage={goTo} />} />
   <Route path="/settings"      element={<PageSettings />} />
+  <Route path="/pricing"       element={<PagePricing />} />
+  <Route path="/billing"       element={<PageBilling />} />
+  <Route path="/payment/success" element={<PaymentSuccess />} />
+  <Route path="/auth"          element={<PageAuth />} />
   <Route path="*"              element={<Navigate to="/dashboard" replace />} />
 </Routes>
             </main>

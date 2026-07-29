@@ -30,14 +30,20 @@ def sanitize(obj):
 
 
 @router.post("/")
-async def predict(model_id: str, file: UploadFile = File(...)):
+async def predict(model_id: str, plan: str = "free", file: UploadFile = File(...)):
     """
-    Score a new CSV/XLSX file against a trained model.
-    Query param: model_id
+    Score a new CSV/XLSX file against a trained model. Pro plan only.
+    Query params: model_id, plan
     Body: multipart file upload
     """
     from routers.train import MODEL_STORE
     from sklearn.preprocessing import LabelEncoder
+
+    if plan.lower() != "pro":
+        raise HTTPException(
+            status_code=403,
+            detail="Scoring a new file upload is available on the Pro plan. Free users can run predictions on their current session dataset.",
+        )
 
     if model_id not in MODEL_STORE:
         raise HTTPException(status_code=404, detail="Model not found. Please train a model first.")

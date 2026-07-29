@@ -5,6 +5,8 @@ import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";
 import * as dashboardService from "../services/dashboard";
 import * as firestoreService from "../services/firestore";
 import RestoreProgressOverlay from "./RestoreProgressOverlay.jsx";
+import ProGate from "./ProGate.jsx";
+
 const RESPONSIVE_CSS = `
   @media (max-width: 640px) {
     .dashboard-panels { grid-template-columns: 1fr !important; }
@@ -20,11 +22,6 @@ const RESPONSIVE_CSS = `
 `;
 
 const EMPTY_SPARK = [0, 0, 0, 0, 0, 0, 0, 0];
-
-const STATIC_STATS = [
-  { label: "Models Trained", value: "—", sub: "Coming soon", color: "var(--cyan)", spark: EMPTY_SPARK },
-  { label: "Avg. Accuracy", value: "—", sub: "Across all models", color: "var(--green)", spark: EMPTY_SPARK },
-];
 
 const TAG_CLASS = {
   Classification: "tag-blue",
@@ -141,6 +138,8 @@ export default function PageDashboard({ setPage }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  const [showUpgradeGate, setShowUpgradeGate] = useState(false);
+
   useEffect(() => {
     if (!user?.uid) return;
 
@@ -220,6 +219,21 @@ export default function PageDashboard({ setPage }) {
     return map;
   }, [datasetsWithStatus, projectIds]);
 
+  const trainedModelCount = useMemo(() => {
+    // Count unique model_ids across all sessions
+    const allModels = sessions.flatMap(s => s.workspace?.trainedModels || []);
+    const uniqueIds = new Set(allModels.map(m => m.model_id).filter(Boolean));
+    return uniqueIds.size;
+  }, [sessions]);
+
+  const avgAccuracy = useMemo(() => {
+    const allModels = sessions.flatMap(s => s.workspace?.trainedModels || []);
+    const withAcc = allModels.filter(m => m.metrics?.accuracy != null);
+    if (!withAcc.length) return null;
+    const avg = withAcc.reduce((sum, m) => sum + m.metrics.accuracy, 0) / withAcc.length;
+    return (avg * 100).toFixed(1) + "%";
+  }, [sessions]);
+
   const datasetSpark = datasets.length
     ? [...datasets].reverse().slice(-8).map((_, index) => index + 1)
     : EMPTY_SPARK;
@@ -243,7 +257,20 @@ export default function PageDashboard({ setPage }) {
       color: "var(--accent)",
       spark: datasetSpark,
     },
-    ...STATIC_STATS,
+    {
+      label: "Models Trained",
+      value: trainedModelCount > 0 ? String(trainedModelCount) : "—",
+      sub: trainedModelCount > 0 ? "Across all sessions" : "Train a model to see this",
+      color: "var(--cyan)",
+      spark: EMPTY_SPARK,
+    },
+    {
+      label: "Avg. Accuracy",
+      value: avgAccuracy ?? "—",
+      sub: avgAccuracy ? "Classification models" : "No classification models yet",
+      color: "var(--green)",
+      spark: EMPTY_SPARK,
+    },
     {
       label: "Total Rows Processed",
       value: loading
@@ -357,11 +384,21 @@ export default function PageDashboard({ setPage }) {
           firestoreService.deleteWorkspaceData(user.uid, dataset.id).catch(() => {});
         }
         if (dataset.storageKey) {
-          fetch(`${API_BASE}/file/delete`, {
-            method:  "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ storage_key: dataset.storageKey }),
-          }).catch(() => {});
+          (async () => {
+            try {
+              const delHeaders = { "Content-Type": "application/json" };
+              if (user) {
+                delHeaders.Authorization = `Bearer ${await user.getIdToken()}`;
+              }
+              await fetch(`${API_BASE}/file/delete`, {
+                method:  "DELETE",
+                headers: delHeaders,
+                body:    JSON.stringify({ storage_key: dataset.storageKey }),
+              });
+            } catch {
+              /* non-fatal — orphaned B2 file */
+            }
+          })();
         }
       }
       await logDeleteActivity("Dataset deleted", dataset.fileName || "Untitled dataset");
@@ -390,11 +427,21 @@ export default function PageDashboard({ setPage }) {
           firestoreService.deleteWorkspaceData(user.uid, dataset.id).catch(() => {});
         }
         if (dataset.storageKey) {
-          fetch(`${API_BASE}/file/delete`, {
-            method:  "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ storage_key: dataset.storageKey }),
-          }).catch(() => {});
+          (async () => {
+            try {
+              const delHeaders = { "Content-Type": "application/json" };
+              if (user) {
+                delHeaders.Authorization = `Bearer ${await user.getIdToken()}`;
+              }
+              await fetch(`${API_BASE}/file/delete`, {
+                method:  "DELETE",
+                headers: delHeaders,
+                body:    JSON.stringify({ storage_key: dataset.storageKey }),
+              });
+            } catch {
+              /* non-fatal — orphaned B2 file */
+            }
+          })();
         }
       }
       await logDeleteActivity(
@@ -424,11 +471,14 @@ export default function PageDashboard({ setPage }) {
 
     // Delete all B2 files for datasets in this project before removing Firestore docs
     const datasetsToDelete = projectDatasets.filter((d) => d.projectId === project.id);
+    const authToken = user ? await user.getIdToken() : null;
     datasetsToDelete.forEach((d) => {
       if (d.storageKey) {
+        const delHeaders = { "Content-Type": "application/json" };
+        if (authToken) delHeaders.Authorization = `Bearer ${authToken}`;
         fetch(`${API_BASE}/file/delete`, {
           method:  "DELETE",
-          headers: { "Content-Type": "application/json" },
+          headers: delHeaders,
           body:    JSON.stringify({ storage_key: d.storageKey }),
         }).catch(() => {});
       }
@@ -480,27 +530,38 @@ export default function PageDashboard({ setPage }) {
         </div>
 
         <div className="flex gap-2 dashboard-actions">
-          <button
-            className="btn-secondary"
-            onClick={() => {
-              localStorage.removeItem("dp_current_project_id");
-              localStorage.removeItem("dp_current_project_name");
-              localStorage.removeItem("dp_current_project_id_from_dashboard");
-              setPage("/upload");
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d={Icons.upload} />
-            </svg>
-            Upload Data
-          </button>
-          <button className="btn-primary" onClick={() => setShowNewProject(true)}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d={Icons.plus} />
-            </svg>
-            New Project
-          </button>
-        </div>
+  <button
+    className="btn-secondary"
+    onClick={() => {
+      localStorage.removeItem("dp_current_project_id");
+      localStorage.removeItem("dp_current_project_name");
+      localStorage.removeItem("dp_current_project_id_from_dashboard");
+      setPage("/upload");
+    }}
+  >
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d={Icons.upload} />
+    </svg>
+    Upload Data
+  </button>
+
+  <button 
+    className="btn-primary" 
+    onClick={() => {
+      const plan = (userProfile?.plan || "free").toLowerCase();
+      if (plan === "free") {
+        setShowUpgradeGate(true);
+      } else {
+        setShowNewProject(true);
+      }
+    }}
+  >
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d={Icons.plus} />
+    </svg>
+    New Project
+  </button>
+</div>
       </div>
 
       <div className="grid-4 dashboard-stats-grid mb-5 fade-up">
@@ -766,7 +827,17 @@ export default function PageDashboard({ setPage }) {
                 {projects.length === 0 && standaloneDatasets.length === 0 && (
                   <div style={{ fontSize: 12, color: "var(--text3)", textAlign: "center", padding: "40px 0" }}>
                     No projects or standalone datasets yet.{" "}
-                    <span style={{ color: "var(--accent2)", cursor: "pointer" }} onClick={() => setShowNewProject(true)}>
+                    <span
+                      style={{ color: "var(--accent2)", cursor: "pointer" }}
+                      onClick={() => {
+                        const plan = (userProfile?.plan || "free").toLowerCase();
+                        if (plan === "free") {
+                          setShowUpgradeGate(true);
+                        } else {
+                          setShowNewProject(true);
+                        }
+                      }}
+                    >
                       Create your first project →
                     </span>
                   </div>
@@ -1042,6 +1113,39 @@ export default function PageDashboard({ setPage }) {
           </div>
         </div>
       )}
+
+      {/* Pro Gate for New Project */}
+{showUpgradeGate && (
+  <div style={overlayStyle} onClick={() => setShowUpgradeGate(false)}>
+    <div style={modalBoxStyle} onClick={e => e.stopPropagation()}>
+      <ProGate
+        feature="Projects"
+        description="Organize your datasets into projects with unlimited storage and better collaboration."
+        compact={false}
+        onUpgrade={() => { setShowUpgradeGate(false); setPage("/settings", { state: { highlightSection: "manage-subscription" } }); }}
+      />
+      <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+        <button
+          className="btn-secondary"
+          style={{ width: "100%", justifyContent: "center" }}
+          onClick={() => { setShowUpgradeGate(false); setPage("/upload"); }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d={Icons.upload} />
+          </svg>
+          Upload a single dataset instead
+        </button>
+        <button
+          className="btn-secondary"
+          style={{ width: "100%", justifyContent: "center", color: "var(--text3)" }}
+          onClick={() => setShowUpgradeGate(false)}
+        >
+          Maybe later
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }

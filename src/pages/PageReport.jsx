@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Icons } from "../shared/icons.jsx";
 import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";
+import ProGate from "./ProGate.jsx";
 
 const SECTIONS = [
   { id: "executive_summary",  label: "Executive Summary",              default: true  },
@@ -408,7 +409,13 @@ export default function PageReport({ setPage }) {
     savedPlots,
     groqKey,
     activeSessionExpired,
+    userProfile,
   } = useDataPilot();
+
+  const plan  = (userProfile?.plan || "free").toLowerCase();
+  const isPro = plan === "pro";
+
+  const [showDownloadGate, setShowDownloadGate] = useState(false);
 
   const DEFAULT_CHECKED = Object.fromEntries(SECTIONS.map(s => [s.id, s.default]));
   const checked    = reportChecked ?? DEFAULT_CHECKED;
@@ -439,6 +446,7 @@ export default function PageReport({ setPage }) {
           model_id:   modelId || undefined,
           file_name:  fileName,
           groq_key:   groqKey || undefined,
+          plan,
         }),
       });
       const data = await res.json();
@@ -587,14 +595,38 @@ export default function PageReport({ setPage }) {
 
           {report && (
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={downloadReport}>
+              <button
+                className="btn-primary"
+                style={{ flex: 1, justifyContent: "center" }}
+                onClick={() => {
+                  if (!isPro) { setShowDownloadGate(true); return; }
+                  downloadReport();
+                }}
+              >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={Icons.download} /></svg>
                 Download {format}
               </button>
-              <button className="btn-secondary" style={{ flex: 1, justifyContent: "center" }} onClick={printReport}>
+              <button
+                className="btn-secondary"
+                style={{ flex: 1, justifyContent: "center" }}
+                onClick={() => {
+                  if (!isPro) { setShowDownloadGate(true); return; }
+                  printReport();
+                }}
+              >
                 🖨️ Print / PDF
               </button>
             </div>
+          )}
+
+          {showDownloadGate && !isPro && (
+            <ProGate
+              compact
+              icon="📥"
+              feature="Download reports on Pro"
+              description="Generate reports for free. Download as HTML or PDF on the Pro plan."
+              onUpgrade={() => { setShowDownloadGate(false); setPage("/settings", { state: { highlightSection: "manage-subscription" } }); }}
+            />
           )}
         </div>
 

@@ -10,11 +10,24 @@
 
 // ── R2/B2: model save ────────────────────────────────────────────────────────
 
-export async function saveModelToCloud(datasetDocId, modelId, apiBase) {
+// The backend now requires a verified Firebase ID token on these routes
+// (previously anyone who knew/guessed another user's r2_key could restore
+// their model). Callers must pass the Firebase user so we can fetch a
+// fresh token — Firebase caches these locally and auto-refreshes them,
+// so calling getIdToken() on every request is cheap and safe.
+async function authHeaders(firebaseUser) {
+  const headers = { "Content-Type": "application/json" };
+  if (firebaseUser) {
+    headers.Authorization = `Bearer ${await firebaseUser.getIdToken()}`;
+  }
+  return headers;
+}
+
+export async function saveModelToCloud(datasetDocId, modelId, apiBase, plan = "free", firebaseUser = null) {
   const res = await fetch(`${apiBase}/workspace/model/save`, {
     method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify({ model_id: modelId, dataset_doc_id: datasetDocId }),
+    headers: await authHeaders(firebaseUser),
+    body:    JSON.stringify({ model_id: modelId, dataset_doc_id: datasetDocId, plan }),
   });
   if (!res.ok) throw new Error(`Model save failed: ${res.status}`);
   const data = await res.json();
@@ -23,10 +36,10 @@ export async function saveModelToCloud(datasetDocId, modelId, apiBase) {
 
 // ── R2/B2: model restore ─────────────────────────────────────────────────────
 
-export async function restoreModelFromCloud(r2Key, apiBase) {
+export async function restoreModelFromCloud(r2Key, apiBase, firebaseUser = null) {
   const res = await fetch(`${apiBase}/workspace/model/restore`, {
     method:  "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: await authHeaders(firebaseUser),
     body:    JSON.stringify({ r2_key: r2Key }),
   });
   if (!res.ok) throw new Error(`Model restore failed: ${res.status}`);

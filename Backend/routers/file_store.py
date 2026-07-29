@@ -12,8 +12,9 @@ from datetime import datetime, timedelta
 import pandas as pd
 import chardet
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from utils.b2_client import get_b2, b2_available, BUCKET, mime_from_ext
+from utils.auth import get_current_user, require_owns_key
 
 from routers.upload import DATA_CACHE, create_session, READERS, generate_summary
 from routers.upload import sanitize_for_json, PLAN_EXPIRY
@@ -86,13 +87,18 @@ def _parse_content(content: bytes, file_name: str) -> pd.DataFrame:
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.post("/session/restore")
-async def restore_session(payload: dict):
+async def restore_session(payload: dict, authorization: str = Header(None)):
     """Re-create a DATA_CACHE session from a file stored in B2."""
+    user        = get_current_user(authorization)
     storage_key = (payload.get("storage_key") or "").strip()
     plan        = (payload.get("plan") or "free").lower()
 
     if not storage_key:
         raise HTTPException(status_code=400, detail="storage_key is required")
+
+    # Only allow restoring files namespaced under the caller's own uid —
+    # closes the cross-user restore hole (any valid storage_key used to work).
+    require_owns_key(storage_key, user["id"])
 
     if not b2_available():
         raise HTTPException(status_code=503, detail="B2 storage not configured.")
@@ -140,12 +146,13 @@ async def restore_session(payload: dict):
 
 
 @router.post("/session/snapshot")
-async def snapshot_session_to_b2(payload: dict):
+async def snapshot_session_to_b2(payload: dict, authorization: str = Header(None)):
     """
     Serialize the current in-memory cleaned session DataFrame to CSV and upload to B2.
     CSV is used (not Parquet) so the restore path is identical to raw file uploads —
     _parse_content already handles CSV perfectly, no special branch needed.
     """
+    user       = get_current_user(authorization)
     session_id = (payload.get("session_id") or "").strip()
     file_name  = (payload.get("file_name")  or "").strip()
 
@@ -178,15 +185,16 @@ async def snapshot_session_to_b2(payload: dict):
         raise HTTPException(status_code=500, detail=f"Could not serialise: {e}")
 
     dataset_doc_id = (payload.get("dataset_doc_id") or "").strip()
-    uid            = (payload.get("uid")            or "").strip()
+    # uid is derived from the verified token, never trusted from the request
+    # body — a client-supplied uid would let someone write into another
+    # user's namespace.
+    uid = user["id"]
 
-    if dataset_doc_id and uid:
+    if dataset_doc_id:
         storage_key = f"users/{uid}/datasets/{dataset_doc_id}/{csv_name}"
-    elif dataset_doc_id:
-        storage_key = f"datasets/{dataset_doc_id}/{csv_name}"
     else:
-        # legacy fallback — session created before this fix was deployed
-        storage_key = f"files/{session_id}/{csv_name}"
+        # legacy fallback — no dataset_doc_id yet, still namespaced by uid
+        storage_key = f"users/{uid}/files/{session_id}/{csv_name}"
 
     try:
         get_b2().put_object(
@@ -216,11 +224,15 @@ async def snapshot_session_to_b2(payload: dict):
 
 
 @router.delete("/file/delete")
-async def delete_stored_file(payload: dict):
+async def delete_stored_file(payload: dict, authorization: str = Header(None)):
     """Delete a file from B2."""
+    user        = get_current_user(authorization)
     storage_key = (payload.get("storage_key") or "").strip()
     if not storage_key or not b2_available():
         return {"deleted": False}
+
+    # Only allow deleting files namespaced under the caller's own uid.
+    require_owns_key(storage_key, user["id"])
 
     try:
         get_b2().delete_object(Bucket=BUCKET, Key=storage_key)
@@ -234,7 +246,7 @@ async def delete_stored_file(payload: dict):
 # ── Workspace: Model save/restore ─────────────────────────────────────────────
 
 @router.post("/workspace/model/save")
-async def save_model_to_r2(payload: dict):
+async def save_model_to_r2(payload: dict, authorization: str = Header(None)):
     """
     Serialize a trained model from MODEL_STORE and upload to B2.
     Called automatically after training completes.
@@ -243,11 +255,20 @@ async def save_model_to_r2(payload: dict):
     """
     from routers.train import MODEL_STORE, MODEL_EXPIRY_MINUTES
 
+    user           = get_current_user(authorization)
     model_id       = (payload.get("model_id")       or "").strip()
     dataset_doc_id = (payload.get("dataset_doc_id") or "").strip()
+    plan           = str(payload.get("plan", "free")).strip().lower()
 
     if not model_id or not dataset_doc_id:
         raise HTTPException(status_code=400, detail="model_id and dataset_doc_id are required")
+
+    # Model persistence to B2 is a Pro feature — free models live in-memory only
+    if plan != "pro":
+        raise HTTPException(
+            status_code=403,
+            detail="Model persistence is available on the Pro plan. Free plan models live in-memory for 10 minutes.",
+        )
 
     if not b2_available():
         raise HTTPException(status_code=503, detail="B2 storage not configured on this server.")
@@ -281,7 +302,7 @@ async def save_model_to_r2(payload: dict):
         buf.seek(0)
         content = buf.read()
 
-        r2_key = f"workspace/{dataset_doc_id}/models/{model_id}.pkl"
+        r2_key = f"users/{user['id']}/workspace/{dataset_doc_id}/models/{model_id}.pkl"
         get_b2().put_object(
             Bucket=BUCKET,
             Key=r2_key,
@@ -303,7 +324,7 @@ async def save_model_to_r2(payload: dict):
 
 
 @router.post("/workspace/model/restore")
-async def restore_model_from_r2(payload: dict):
+async def restore_model_from_r2(payload: dict, authorization: str = Header(None)):
     """
     Fetch a model .pkl from B2 and reload it into MODEL_STORE with a fresh model_id.
     payload = { "r2_key": str }
@@ -311,9 +332,13 @@ async def restore_model_from_r2(payload: dict):
     """
     from routers.train import MODEL_STORE, MODEL_EXPIRY_MINUTES
 
+    user   = get_current_user(authorization)
     r2_key = (payload.get("r2_key") or "").strip()
     if not r2_key:
         raise HTTPException(status_code=400, detail="r2_key is required")
+
+    # Only allow restoring models namespaced under the caller's own uid.
+    require_owns_key(r2_key, user["id"])
 
     if not b2_available():
         raise HTTPException(status_code=503, detail="B2 storage not configured on this server.")

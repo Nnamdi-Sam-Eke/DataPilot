@@ -22,11 +22,13 @@ PLAN_EXPIRY: Dict[str, int] = {
     "pro":  720,   # 12 hours
 }
 
-# Max rows stored in-memory for free plan users
+# Row limits by plan (hard caps — files exceeding these are rejected outright)
 MAX_ROWS_FREE = 20_000
+MAX_ROWS_PRO  = 500_000
 
-# Hard cap on uploaded file size (bytes) — reject before reading into memory
-MAX_UPLOAD_BYTES = 30 * 1024 * 1024  # 30 MB
+# File size caps by plan (bytes)
+MAX_UPLOAD_BYTES_FREE = 10 * 1024 * 1024   # 10 MB
+MAX_UPLOAD_BYTES_PRO  = 50 * 1024 * 1024   # 50 MB
 
 # Global user-visible stats (in-memory)
 USER_STATS = {
@@ -62,6 +64,10 @@ _EXT_READERS = {
     "json": pd.read_json,
 }
 
+# File types gated to Pro only
+_PRO_ONLY_TYPES = {"json"}
+_PRO_ONLY_MIMES = {"application/json"}
+
 def create_session(df: pd.DataFrame, plan: str = "free", file_name: str = None) -> str:
     """Create a new session."""
     session_id = str(uuid.uuid4())
@@ -87,15 +93,14 @@ def get_session(session_id: str):
     if not session:
         return None
     expiry_minutes = session.get("expiry_minutes", EXPIRY_MINUTES)
-    # Use last_accessed for inactivity-based expiry — active sessions never
-    # expire mid-work. Falls back to created_at for sessions created before
-    # this change was deployed.
-    last_touch = session.get("last_accessed") or session["created_at"]
-    if datetime.utcnow() - last_touch > timedelta(minutes=expiry_minutes):
+    # Use absolute expiry from created_at (not inactivity). This aligns with
+    # the frontend banner which also uses absolute time from uploadedAt.
+    # A 90-minute session uploaded at 10:00 AM expires at 11:30 AM regardless
+    # of logout/login.
+    created_at = session["created_at"]
+    if datetime.utcnow() - created_at > timedelta(minutes=expiry_minutes):
         del DATA_CACHE[session_id]
         return None
-    # Refresh the inactivity clock on every legitimate access
-    session["last_accessed"] = datetime.utcnow()
     return session["df"]
 
 def generate_summary(df: pd.DataFrame) -> Dict[str, Any]:
@@ -199,6 +204,9 @@ async def process_file(file: UploadFile, plan: str = "free") -> Dict[str, Any]:
     # FIX: fall back to extension-based reader for application/octet-stream
     # (common when uploading via mobile, Postman, or drag-and-drop on some
     # browsers) so valid CSV/XLSX files are never silently rejected.
+    is_pro = plan.lower() == "pro"
+
+    # Resolve reader — extension fallback for octet-stream uploads
     reader = READERS.get(file.content_type)
     if reader is None:
         ext = (file.filename or "").rsplit(".", 1)[-1].lower()
@@ -206,20 +214,34 @@ async def process_file(file: UploadFile, plan: str = "free") -> Dict[str, Any]:
     if reader is None:
         return sanitize_for_json({
             "file_name": file.filename,
-            "error": f"Unsupported file type: {file.content_type}. Supported: CSV, XLSX, JSON.",
+            "error": f"Unsupported file type: {file.content_type}. Supported: CSV, XLSX" + (", JSON." if is_pro else "."),
+        })
+
+    # Gate JSON uploads to Pro only
+    ext_check = (file.filename or "").rsplit(".", 1)[-1].lower()
+    if (file.content_type in _PRO_ONLY_MIMES or ext_check in _PRO_ONLY_TYPES) and not is_pro:
+        return sanitize_for_json({
+            "file_name": file.filename,
+            "error": "JSON uploads are available on the Pro plan. Please upgrade to upload JSON files.",
+            "plan_gate": "pro",
         })
 
     try:
         content = await file.read()
 
-        if len(content) > MAX_UPLOAD_BYTES:
-            size_mb = len(content) / (1024 * 1024)
+        # Per-plan file size cap
+        max_bytes = MAX_UPLOAD_BYTES_PRO if is_pro else MAX_UPLOAD_BYTES_FREE
+        if len(content) > max_bytes:
+            size_mb     = len(content) / (1024 * 1024)
+            max_size_mb = max_bytes // (1024 * 1024)
             return sanitize_for_json({
                 "file_name": file.filename,
                 "error": (
                     f"File too large ({size_mb:.1f} MB). "
-                    f"Maximum allowed size is {MAX_UPLOAD_BYTES // (1024*1024)} MB."
+                    f"{'Pro' if is_pro else 'Free'} plan limit is {max_size_mb} MB."
+                    + ("" if is_pro else " Upgrade to Pro for up to 50 MB.")
                 ),
+                "plan_gate": None if is_pro else "pro",
             })
 
         buffer = io.BytesIO(content)
@@ -228,11 +250,22 @@ async def process_file(file: UploadFile, plan: str = "free") -> Dict[str, Any]:
         if df.empty:
             return sanitize_for_json({"file_name": file.filename, "error": "File is empty"})
 
-        if plan == "free" and len(df) > MAX_ROWS_FREE:
-            df = df.sample(MAX_ROWS_FREE, random_state=42).reset_index(drop=True)
-            logger.warning(
-                f"Free plan: dataset sampled to {MAX_ROWS_FREE} rows ({file.filename})"
-            )
+        # Per-plan row cap — hard reject, no silent sampling
+        max_rows = MAX_ROWS_PRO if is_pro else MAX_ROWS_FREE
+        if len(df) > max_rows:
+            plan_label = "Pro" if is_pro else "Free"
+            limit_str  = f"{max_rows:,}"
+            actual_str = f"{len(df):,}"
+            upgrade_hint = "" if is_pro else " Please upload a smaller file or upgrade to Pro (up to 500,000 rows)."
+            return sanitize_for_json({
+                "file_name": file.filename,
+                "error": (
+                    f"Your file has {actual_str} rows, which exceeds the {plan_label} plan limit of {limit_str} rows.{upgrade_hint}"
+                ),
+                "plan_gate": None if is_pro else "pro",
+                "row_count_actual": len(df),
+                "row_limit": max_rows,
+            })
 
         for col in df.select_dtypes(include=["object"]).columns:
             try:

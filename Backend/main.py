@@ -21,6 +21,8 @@ try:
 except ImportError:
     _has_train = False
 
+from routers import payments
+
 # ================= LOGGING =================
 logging.basicConfig(
     level=logging.INFO,
@@ -62,9 +64,10 @@ async def cleanup_expired_sessions():
             from routers.clean import CLEAN_STORE
 
             # ── Evict expired DATA_CACHE sessions ────────────────────────
+            # Use absolute expiry from created_at to match frontend's timer
             expired = [
                 sid for sid, session in DATA_CACHE.items()
-                if datetime.utcnow() - (session.get("last_accessed") or session["created_at"]) > timedelta(
+                if datetime.utcnow() - session["created_at"] > timedelta(
                     minutes=session.get("expiry_minutes", 180)
                 )
             ]
@@ -157,7 +160,7 @@ async def lifespan(app: FastAPI):
     logger.info("📤 Single Upload: POST /upload")
     logger.info("📦 Batch Upload:  POST /batch_uploads")
     logger.info("📊 Get Data:      GET  /data/{session_id}")
-    logger.info("💾 Cache Expiry:  60 min (Free) / 720 min (Pro)")
+    logger.info("💾 Cache Expiry:  90 min (Free) / 720 min (Pro)")
     logger.info("🧹 Auto-cleanup:  Every 5 minutes")
     logger.info("=" * 50)
 
@@ -430,6 +433,7 @@ app.include_router(plots.router, prefix="/plots", tags=["Plots"])
 app.include_router(codegen.router, prefix="/codegen", tags=["CodeGen"])
 app.include_router(clean_router, tags=["Clean"])
 app.include_router(file_store_router, tags=["Storage"])
+app.include_router(payments.router,prefix="/api",tags=["Payments"])
 
 if _has_train:
     app.include_router(train.router,   prefix="/train",   tags=["Train"])

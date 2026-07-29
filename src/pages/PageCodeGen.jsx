@@ -410,6 +410,29 @@ function buildNotebook(pyCode, fileName, sections) {
   });
   flush();
 
+  // After flushing all sections, inject chart display cells if savedPlots exist
+  // These are stubs that show inline images when the notebook is run
+  if (sections?.visualizations) {
+    addMd("## Chart Output Stubs\n> Run the Visualizations section above, then execute these cells to display each chart inline.");
+    addCode([
+      "# Display saved charts — run after the Visualizations section above",
+      "# Each plt.show() call will render the chart inline in Jupyter",
+      "import matplotlib.pyplot as plt",
+      "import matplotlib.image as mpimg",
+      "import base64, io",
+      "",
+      "# If you have base64 chart images from DataPilot exports, decode them here:",
+      "# chart_b64 = \"...\"  # paste base64 string from DataPilot",
+      "# img_data = base64.b64decode(chart_b64)",
+      "# img = mpimg.imread(io.BytesIO(img_data))",
+      "# plt.figure(figsize=(10, 6))",
+      "# plt.imshow(img)",
+      "# plt.axis('off')",
+      "# plt.tight_layout()",
+      "# plt.show()",
+    ].join("\n"));
+  }
+
   return JSON.stringify({
     nbformat: 4,
     nbformat_minor: 5,
@@ -565,7 +588,11 @@ export default function PageCodeGen({ setPage }) {
     trainConfig, trainResults,
     cleanOpLog, savedPlots,
     activeSessionExpired,
+    userProfile,
   } = useDataPilot();
+
+  const plan  = (userProfile?.plan || "free").toLowerCase();
+  const isPro = plan === "pro";
 
   const hasData    = !!sessionId && !activeSessionExpired;
   const hasCleaning = Array.isArray(cleanOpLog) && cleanOpLog.length > 0;
@@ -788,7 +815,20 @@ export default function PageCodeGen({ setPage }) {
               }}
             >
               <FormatTab id="py"    label="Python Script"   icon={<IcoPy />}  ext=".py"    active={format==="py"}    onClick={setFormat} />
-              <FormatTab id="ipynb" label="Jupyter Notebook" icon={<IcoNb />} ext=".ipynb" active={format==="ipynb"} onClick={setFormat} />
+              <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+                <FormatTab id="ipynb" label="Jupyter Notebook" icon={<IcoNb />} ext=".ipynb"
+                  active={format==="ipynb"}
+                  onClick={(id) => { if (isPro) setFormat(id); }}
+                />
+                {!isPro && (
+                  <span style={{
+                    position: "absolute", top: 6, right: 6,
+                    fontSize: 8, fontWeight: 700, color: "var(--accent2)",
+                    background: "var(--accent-dim)", border: "1px solid rgba(108,99,255,0.3)",
+                    borderRadius: 3, padding: "1px 4px", pointerEvents: "none",
+                  }}>PRO</span>
+                )}
+              </div>
               <FormatTab id="md"    label="Markdown Report" icon={<IcoMd />}  ext=".md"    active={format==="md"}    onClick={setFormat} />
             </div>
 

@@ -82,7 +82,7 @@ export default function Topbar({ page, onMenuClick }) {
   }, []);
 
   const handleAvatarClick = () => {
-    if (window.innerWidth <= 768) return;
+    // On mobile, open menu for sign-out access
     setMenuOpen((prev) => !prev);
   };
 
