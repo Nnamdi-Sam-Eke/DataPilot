@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useDataPilot } from "../DataPilotContext";
 import { sendPasswordResetEmail } from "firebase/auth";
@@ -185,6 +186,7 @@ const ThemeToggle = ({ isDark, onToggle }) => (
 // ── main ──────────────────────────────────────────────────────────────────────
 export default function PageAuth() {
   const { signup, login, theme, toggleTheme } = useDataPilot();
+  const navigate = useNavigate();
   const isDark = theme === "dark";
 
   // mode: "login" | "signup" | "reset"
@@ -331,7 +333,7 @@ export default function PageAuth() {
         {/* ── LEFT PANEL ── */}
         <div className="auth-split-left" style={{
           flex: "0 0 52%", display: "flex", flexDirection: "column",
-          justifyContent: "space-between", padding: "48px 52px",
+          justifyContent: "space-between", gap: 18, padding: "48px 52px",
           position: "relative", zIndex: 1,
           borderRight: "1px solid var(--border, rgba(255,255,255,0.05))",
         }}>
@@ -380,7 +382,7 @@ export default function PageAuth() {
             <p style={{
               marginTop: 18, fontSize: 14.5, lineHeight: 1.65,
               color: "var(--text3, #4a4f62)",
-              maxWidth: 400,
+              maxWidth: 430,
               fontFamily: "'DM Sans', sans-serif",
             }}>
               Upload, clean, visualize, train, predict, and export
@@ -705,6 +707,26 @@ export default function PageAuth() {
 
                   </div>
                 </form>
+
+                {!isLogin && (
+                  <p style={{
+                    margin: "10px 0 10px", textAlign: "center", fontSize: 11,
+                    color: "var(--text3, #4a4f62)", lineHeight: 1.5,
+                    fontFamily: "'DM Sans', sans-serif",
+                  }}>
+                    By creating an account you agree to our{" "}
+                    <button type="button" onClick={() => navigate("/terms")}
+                      style={{ background:"none", border:"none", cursor:"pointer", color:"#a78bfa", fontSize:11, padding:0, fontFamily:"inherit" }}>
+                      Terms
+                    </button>
+                    {" "}and{" "}
+                    <button type="button" onClick={() => navigate("/privacy")}
+                      style={{ background:"none", border:"none", cursor:"pointer", color:"#a78bfa", fontSize:11, padding:0, fontFamily:"inherit" }}>
+                      Privacy Policy
+                    </button>
+                    .
+                  </p>
+                )}
 
                 {/* footer note */}
                 <p style={{

@@ -13,13 +13,19 @@ sys.path.append(
         )
     )
 )
-from src.services.flutterwave import create_payment, verify_transaction, cancel_subscription
+from src.services.flutterwave import (
+    create_payment,
+    verify_transaction,
+    cancel_subscription,
+    get_subscription_id_by_email,
+)
 
 from firebase_admin import firestore
+from firebase_admin import auth as firebase_auth
 # Importing this also performs the (idempotent) Firebase Admin init — see
 # utils/auth.py. Kept as a single shared init so no two modules race to
 # initialize the SDK differently.
-from utils.auth import get_current_user
+from utils.auth import get_current_user, apply_lazy_plan_expiry
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -117,6 +123,26 @@ def _find_user_id_by_email(email: str):
         return None
 
 
+def _resolve_subscription_id(email: str, v_data: dict):
+    """
+    Flutterwave's subscription object exposes two different ids:
+    - `plan`: the shared payment-plan id (same for all customers on the plan)
+    - `id`: the actual subscription id (what /subscriptions/{id}/cancel needs)
+
+    The safe path is to prefer the subscription id when present, then fall
+    back to a fresh lookup by email if the webhook payload is missing it.
+    """
+    sub_id = v_data.get("subscription_id") or v_data.get("subscription")
+    if isinstance(sub_id, dict):
+        sub_id = sub_id.get("id") or sub_id.get("subscription_id")
+    if sub_id:
+        return str(sub_id)
+
+    if email:
+        return get_subscription_id_by_email(email)
+    return None
+
+
 @router.get("/payments/subscription")
 async def get_subscription(authorization: str = Header(None)):
     """
@@ -133,18 +159,14 @@ async def get_subscription(authorization: str = Header(None)):
     user_doc = user_ref.get()
     user_data = user_doc.to_dict() if user_doc.exists else {}
 
+    # Same lazy-expiry check every gated route already runs via
+    # get_user_plan() — reused here (not duplicated) so Billing and every
+    # other route agree on when a lapsed Pro user gets downgraded.
+    user_data = apply_lazy_plan_expiry(user["id"], user_data)
+
     plan = (user_data.get("plan") or "free").lower()
     period_end = user_data.get("current_period_end")
     subscription_status = user_data.get("subscription_status")
-
-    if plan == "pro" and period_end is not None:
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
-        expires_at = period_end if period_end.tzinfo else period_end.replace(tzinfo=timezone.utc)
-        if expires_at < now and subscription_status != "cancelling":
-            user_ref.set({"plan": "free", "subscription_status": "expired"}, merge=True)
-            plan = "free"
-            subscription_status = "expired"
 
     history_docs = (
         db.collection("payments")
@@ -191,6 +213,9 @@ async def cancel_subscription_route(authorization: str = Header(None)):
 
     user_data = user_doc.to_dict()
     subscription_id = user_data.get("subscription_id")
+    if not subscription_id:
+        subscription_id = get_subscription_id_by_email(user.get("email"))
+
     if not subscription_id or (user_data.get("plan") or "free").lower() != "pro":
         raise HTTPException(status_code=400, detail="No active subscription to cancel")
 
@@ -218,18 +243,27 @@ async def flutterwave_webhook(request: Request):
     event = payload.get("event", "")
     data = payload.get("data", payload)
 
-    # Flutterwave auto-cancels a subscription after 3 failed renewal attempts,
-    # and also sends this when a user cancels via the dashboard/API. Either
-    # way, the customer is no longer paying — downgrade them.
+    # Flutterwave may emit a cancel webhook for either:
+    # 1) a customer-initiated cancellation (stop auto-renewal, keep access until
+    #    current_period_end), or
+    # 2) an auto-cancel after failed renewal attempts.
+    #
+    # In both cases, the user should remain Pro until the already-paid period
+    # ends. The lazy downgrade in /payments/subscription handles the actual
+    # deadline crossing later. This webhook should only record that the
+    # subscription is cancelling, not immediately revoke access.
     if event in ("subscription.cancelled", "subscription.cancelled ") or "cancel" in event.lower():
         email = (data.get("customer") or {}).get("email")
         user_id = _find_user_id_by_email(email)
         if user_id:
             db.collection("users").document(user_id).set(
-                {"plan": "free", "subscription_status": "cancelled"},
+                {
+                    "subscription_status": "cancelling",
+                    "plan": "pro",
+                },
                 merge=True,
             )
-            logger.info(f"Downgraded user {user_id} — subscription cancelled ({email})")
+            logger.info(f"Marked user {user_id} as cancelling — subscription cancelled ({email})")
         return {"status": "processed"}
 
     tx_ref = data.get("tx_ref") or data.get("txRef", "")
@@ -278,7 +312,7 @@ async def flutterwave_webhook(request: Request):
             logger.warning(f"Renewal charge {tx_ref} matched no user (email={email})")
             return {"status": "ignored"}
 
-        subscription_id = v_data.get("plan") or v_data.get("subscription_id")
+        subscription_id = _resolve_subscription_id(email, v_data)
         payment_ref.set({
             "user_id": user_id,
             "email": email,
@@ -320,7 +354,7 @@ async def flutterwave_webhook(request: Request):
         return {"status": "verification_failed"}
 
     user_id = payment_data["user_id"]
-    subscription_id = v_data.get("plan") or v_data.get("subscription_id")
+    subscription_id = _resolve_subscription_id(payment_data.get("email"), v_data)
 
     payment_ref.update({
         "status": "successful",

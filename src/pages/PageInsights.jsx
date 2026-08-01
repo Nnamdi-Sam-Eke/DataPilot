@@ -226,10 +226,21 @@ export default function PageInsights({ setPage }) {
       });
 
       const data = await res.json();
+      const isPlanGate = data.plan_gate === "pro";
+      const displayText = isPlanGate
+        ? "⚠️ Daily AI insight limit reached — you've used your 15 free queries for today. Upgrade to Pro for unlimited queries."
+        : data.error
+          ? `⚠️ ${data.error}`
+          : data.response;
 
       setMessages((m) => [
         ...m,
-        { role: "ai", text: data.error ? `⚠️ ${data.error}` : data.response, ts: Date.now() },
+        {
+          role: "ai",
+          text: displayText,
+          ts: Date.now(),
+          plan_gate: isPlanGate ? "pro" : null,
+        },
       ]);
     } catch {
       setMessages((m) => [
@@ -328,11 +339,41 @@ export default function PageInsights({ setPage }) {
                     {m.role === "ai" ? "✦" : "U"}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
-                    <div className={`chat-bubble ${m.role}`}>
+                    <div
+                      className={`chat-bubble ${m.role}`}
+                      style={
+                        m.plan_gate === "pro"
+                          ? {
+                              background: "rgba(139,92,246,0.08)",
+                              border: "1px solid rgba(139,92,246,0.25)",
+                              color: "var(--accent)",
+                            }
+                          : undefined
+                      }
+                    >
                       <div style={{ whiteSpace: "pre-line" }}>
                         <RichText text={m.text} />
                       </div>
                     </div>
+                    {m.plan_gate === "pro" && (
+                      <button
+                        onClick={() => setPage("/settings", { state: { highlightSection: "manage-subscription" } })}
+                        style={{
+                          marginTop: 4,
+                          padding: 0,
+                          border: "none",
+                          background: "transparent",
+                          color: "var(--accent2)",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          textDecoration: "underline",
+                          alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+                        }}
+                      >
+                        Upgrade to Pro →
+                      </button>
+                    )}
                     {m.ts && (
                       <div style={{ fontSize: 9.5, color: "var(--text3)", fontFamily: "'DM Mono', monospace", paddingLeft: 2, paddingRight: 2 }}>
                         {new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

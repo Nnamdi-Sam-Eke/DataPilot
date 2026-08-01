@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Header
 from dotenv import load_dotenv
 from pathlib import Path
 from datetime import datetime
@@ -9,12 +9,21 @@ import json
 from typing import Dict
 
 from .upload import get_session, DATA_CACHE
+from utils.auth import get_current_user, get_user_plan
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # ================= CACHE =================
 CONTEXT_CACHE: Dict[str, str] = {}
+
+# ================= FREE-PLAN DAILY RATE LIMIT =================
+# Persisted in Firestore (users/{uid}/counters/insights) so quotas survive
+# restarts and stay consistent across instances. See utils.quota.
+from utils.quota import (
+    FREE_DAILY_INSIGHT_LIMIT,
+    check_and_consume_insight_quota as _check_and_consume_insight_quota,
+)
 
 MAX_COLUMNS = int(os.getenv("INSIGHTS_MAX_COLUMNS", "20"))
 MAX_SAMPLE_ROWS = int(os.getenv("INSIGHTS_MAX_SAMPLE_ROWS", "3"))
@@ -37,7 +46,18 @@ def get_env(name: str, default: str | None = None) -> str | None:
 
 # ================= MAIN ROUTE =================
 @router.post("/")
-async def get_insights(payload: dict):
+async def get_insights(payload: dict, authorization: str = Header(None)):
+
+    # FIX: uid and plan used to come straight from the payload
+    # (payload.get("uid"), payload.get("plan")) — fully client-supplied and
+    # unverified. Neither is currently used to gate anything in this route,
+    # but an unverified "uid" logged/trusted here is a bad habit to leave in
+    # place, and plan will very likely be used for per-tier rate limiting or
+    # model selection later. Deriving both from the verified token now means
+    # that future addition doesn't reintroduce the same spoofing hole.
+    user = get_current_user(authorization)
+    uid  = user["id"]
+    plan = get_user_plan(uid)
 
     # ---------- safe import (avoid circular issues) ----------
     try:
@@ -51,13 +71,16 @@ async def get_insights(payload: dict):
 
     prompt = str(payload.get("prompt", "")).strip()
     session_ids = payload.get("session_ids", [])
-    uid  = str(payload.get("uid", "")).strip()
-    plan = str(payload.get("plan", "free")).strip().lower()
 
     if not prompt:
         return {"error": "Please provide a prompt."}
     if not session_ids:
         return {"error": "No dataset selected."}
+
+    quota_error = _check_and_consume_insight_quota(uid, plan)
+    if quota_error:
+        return {"error": quota_error, "plan_gate": "pro"}
+
     now = datetime.utcnow()
     datasets_text = []
 

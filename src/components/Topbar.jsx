@@ -35,7 +35,18 @@ function LogOutIcon({ size = 14 }) {
   );
 }
 
-const ACCENT_COLORS = ["#6c63ff", "#3b82f6", "#22d3ee", "#10b981", "#6366f1", "#ec4899", "#f59e0b"];
+const ACCENT_COLORS = [
+  "#6c63ff",
+  "#3b82f6",
+  "#22d3ee",
+  "#14b8a6",
+  "#10b981",
+  "#f59e0b",
+  "#f97316",
+  "#ef4444",
+  "#ec4899",
+  "#8b5cf6",
+];
 
 export default function Topbar({ page, onMenuClick }) {
   const { userProfile, logout, theme, toggleTheme, accentColor, setAccentColor } = useDataPilot();
@@ -125,7 +136,7 @@ export default function Topbar({ page, onMenuClick }) {
               display: "flex", alignItems: "center", justifyContent: "center",
               width: 30, height: 30, borderRadius: 8, border: "1px solid var(--border)",
               background: themeOpen ? "var(--bg3)" : "transparent",
-              cursor: "pointer", color: "var(--text2)", transition: "background 0.15s",
+              cursor: "pointer", color: "var(--accent)", transition: "background 0.15s",
             }}
           >
             {theme === "light" ? (

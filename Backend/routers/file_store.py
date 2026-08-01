@@ -14,7 +14,7 @@ import chardet
 
 from fastapi import APIRouter, HTTPException, Header
 from utils.b2_client import get_b2, b2_available, BUCKET, mime_from_ext
-from utils.auth import get_current_user, require_owns_key
+from utils.auth import get_current_user, require_owns_key, get_user_plan
 
 from routers.upload import DATA_CACHE, create_session, READERS, generate_summary
 from routers.upload import sanitize_for_json, PLAN_EXPIRY
@@ -91,7 +91,12 @@ async def restore_session(payload: dict, authorization: str = Header(None)):
     """Re-create a DATA_CACHE session from a file stored in B2."""
     user        = get_current_user(authorization)
     storage_key = (payload.get("storage_key") or "").strip()
-    plan        = (payload.get("plan") or "free").lower()
+
+    # FIX: plan used to come from payload.get("plan") — client could just
+    # send {"plan": "pro"} to get Pro's longer session expiry on a free
+    # account. Now derived server-side from the verified user's Firestore doc,
+    # the same way uid already was.
+    plan = get_user_plan(user["id"])
 
     if not storage_key:
         raise HTTPException(status_code=400, detail="storage_key is required")
@@ -258,7 +263,12 @@ async def save_model_to_r2(payload: dict, authorization: str = Header(None)):
     user           = get_current_user(authorization)
     model_id       = (payload.get("model_id")       or "").strip()
     dataset_doc_id = (payload.get("dataset_doc_id") or "").strip()
-    plan           = str(payload.get("plan", "free")).strip().lower()
+
+    # FIX: plan used to come from payload.get("plan") — meaning the 403 check
+    # right below was fully bypassable by any free user simply sending
+    # {"plan": "pro", ...}. Now derived server-side from the verified user's
+    # Firestore doc, so this gate is actually enforced.
+    plan = get_user_plan(user["id"])
 
     if not model_id or not dataset_doc_id:
         raise HTTPException(status_code=400, detail="model_id and dataset_doc_id are required")
@@ -334,11 +344,23 @@ async def restore_model_from_r2(payload: dict, authorization: str = Header(None)
 
     user   = get_current_user(authorization)
     r2_key = (payload.get("r2_key") or "").strip()
+    plan   = get_user_plan(user["id"])
+
     if not r2_key:
         raise HTTPException(status_code=400, detail="r2_key is required")
 
     # Only allow restoring models namespaced under the caller's own uid.
     require_owns_key(r2_key, user["id"])
+
+    # Model persistence (and therefore restore) is a Pro feature. Mirrors the
+    # same check on save_model_to_r2 above — without this, a user who saved a
+    # model while on Pro and later downgraded to Free could still silently
+    # restore it (e.g. via the automatic workspace-restore-on-login flow).
+    if plan != "pro":
+        raise HTTPException(
+            status_code=403,
+            detail="Restoring a saved model is available on the Pro plan.",
+        )
 
     if not b2_available():
         raise HTTPException(status_code=503, detail="B2 storage not configured on this server.")

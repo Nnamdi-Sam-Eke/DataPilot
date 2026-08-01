@@ -12,6 +12,12 @@ import json
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from pathlib import Path
+
+# Load backend environment variables before any router import touches
+# Firebase/Admin code that depends on them during module import.
+BACKEND_DIR = Path(__file__).resolve().parent
+load_dotenv(dotenv_path=BACKEND_DIR / ".env")
+
 from routers import upload, insights, plots, codegen
 from routers.clean import router as clean_router
 from routers.file_store import router as file_store_router
@@ -100,46 +106,83 @@ async def cleanup_expired_sessions():
             # ── Expire models after their configured lifetime (created_at + expiry_minutes)
             if _has_train:
                 try:
-                    from routers.train import MODEL_STORE, MAX_MODELS
+                    from routers.train import (
+                        MODEL_STORE,
+                        MAX_MODELS_GLOBAL,
+                        MAX_MODELS_PER_USER,
+                        _enforce_user_model_budget,
+                        _evict_model,
+                    )
                 except Exception:
                     from routers.train import MODEL_STORE
-                    MAX_MODELS = 4
+                    MAX_MODELS_GLOBAL = 80
+                    MAX_MODELS_PER_USER = 4
+                    _enforce_user_model_budget = None
+                    _evict_model = None
 
                 expired_models = [
                     mid for mid, m in MODEL_STORE.items()
-                    if datetime.utcnow() - m.get("created_at", datetime.utcnow()) > timedelta(minutes=m.get("expiry_minutes", 60))
+                    if datetime.utcnow() - m.get("created_at", datetime.utcnow())
+                    > timedelta(minutes=m.get("expiry_minutes", 60))
                 ]
 
                 for mid in expired_models:
-                    try:
-                        fp = MODEL_STORE[mid].get("file_path")
-                        if fp and os.path.exists(fp):
-                            os.remove(fp)
-                    except Exception:
-                        pass
-
-                    try:
-                        del MODEL_STORE[mid]
-                    except Exception:
-                        pass
+                    if _evict_model:
+                        try:
+                            _evict_model(mid)
+                        except Exception:
+                            MODEL_STORE.pop(mid, None)
+                    else:
+                        try:
+                            fp = MODEL_STORE.get(mid, {}).get("file_path")
+                            if fp and os.path.exists(fp):
+                                os.remove(fp)
+                        except Exception:
+                            pass
+                        MODEL_STORE.pop(mid, None)
 
                 if expired_models:
                     logger.info(f"🧹 Expired {len(expired_models)} model(s)")
 
-                # Enforce hard limit: delete oldest by last_accessed if over cap
+                # Per-user budgets (Pro ≤4, Free ≤1) so one user cannot evict another
                 try:
-                    if len(MODEL_STORE) > MAX_MODELS:
-                        # sort by last_accessed (oldest first)
-                        ordered = sorted(MODEL_STORE.items(), key=lambda kv: kv[1].get("last_accessed", kv[1].get("created_at")))
-                        while len(MODEL_STORE) > MAX_MODELS:
+                    if _enforce_user_model_budget:
+                        uids = {
+                            m.get("uid")
+                            for m in MODEL_STORE.values()
+                            if m.get("uid")
+                        }
+                        for uid in uids:
+                            plan = next(
+                                (
+                                    m.get("plan")
+                                    for m in MODEL_STORE.values()
+                                    if m.get("uid") == uid
+                                ),
+                                "free",
+                            )
+                            _enforce_user_model_budget(uid, plan or "free")
+                except Exception as e:
+                    logger.warning(f"Per-user model budget cleanup failed: {e}")
+
+                # Global safety ceiling only (much higher than old MAX_MODELS=4)
+                try:
+                    if len(MODEL_STORE) > MAX_MODELS_GLOBAL:
+                        ordered = sorted(
+                            MODEL_STORE.items(),
+                            key=lambda kv: kv[1].get("last_accessed")
+                            or kv[1].get("created_at")
+                            or datetime.utcnow(),
+                        )
+                        while len(MODEL_STORE) > MAX_MODELS_GLOBAL and ordered:
                             oldest_mid = ordered.pop(0)[0]
-                            try:
-                                fp = MODEL_STORE[oldest_mid].get("file_path")
-                                if fp and os.path.exists(fp):
-                                    os.remove(fp)
-                            except Exception:
-                                pass
-                            del MODEL_STORE[oldest_mid]
+                            if _evict_model:
+                                _evict_model(oldest_mid)
+                            else:
+                                MODEL_STORE.pop(oldest_mid, None)
+                        logger.info(
+                            f"🧹 Global model cap enforced (limit={MAX_MODELS_GLOBAL})"
+                        )
                 except Exception:
                     pass
 

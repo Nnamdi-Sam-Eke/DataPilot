@@ -82,3 +82,43 @@ def cancel_subscription(subscription_id):
         headers=_headers(),
     )
     return response.json()
+
+
+def get_subscription_id_by_email(email):
+    """
+    Look up a customer's actual Flutterwave subscription id by email.
+
+    IMPORTANT: don't confuse this with the "plan" field you'll see on a
+    subscription or transaction object — per Flutterwave's own docs,
+    a subscription object looks like:
+        { "id": 15376, "amount": 2000, "customer": {...}, "plan": 17490, ... }
+    "id" is the subscription's own id (what /subscriptions/{id}/cancel needs).
+    "plan" is the *payment plan* id — the same value for every customer on
+    that plan. They are not interchangeable. This function returns "id".
+
+    Returns the subscription id (as a string) for the most recent active
+    subscription matching the email, or None if none is found.
+    """
+    try:
+        response = requests.get(
+            f"{FLW_BASE_URL}/subscriptions",
+            headers=_headers(),
+            params={"email": email},
+        )
+        payload = response.json()
+    except Exception:
+        return None
+
+    if payload.get("status") != "success":
+        return None
+
+    subscriptions = payload.get("data") or []
+    if not subscriptions:
+        return None
+
+    # Prefer an active subscription if there's more than one on record for
+    # this email (e.g. a prior cancelled + a new resubscribe).
+    active = [s for s in subscriptions if s.get("status") == "active"]
+    chosen = active[0] if active else subscriptions[0]
+    sub_id = chosen.get("id")
+    return str(sub_id) if sub_id is not None else None

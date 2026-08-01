@@ -1,0 +1,6 @@
+pytest>=7.0
+fastapi
+httpx
+python-dotenv
+pandas
+numpy

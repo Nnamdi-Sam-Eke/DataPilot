@@ -1,13 +1,14 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Header
 import pandas as pd
 import json
 import hashlib
 from utils.plot_utils import df_to_base64_plot, get_from_cache, save_to_cache
+from utils.auth import get_current_user, get_user_plan
 
 router = APIRouter()
 
 @router.post("/")
-async def generate_plot(payload: dict):
+async def generate_plot(payload: dict, authorization: str = Header(None)):
     """
     Generate multiple plots from provided data.
     
@@ -55,10 +56,16 @@ async def generate_plot(payload: dict):
         ]
     }
     """
+    # FIX: plan used to come from payload.get("plan") — client could just
+    # send {"plan": "pro", "compareMode": true, ...} to unlock dataset
+    # comparison on a free account. Now derived server-side from the
+    # verified user's Firestore doc.
+    user = get_current_user(authorization)
+    plan = get_user_plan(user["id"])
+
     plots = payload.get("plots", [])
     compare_mode = payload.get("compareMode", False)
     session_id = payload.get("session_id", None)
-    plan       = str(payload.get("plan", "free")).strip().lower()
 
     # Gate compare mode behind Pro
     if compare_mode and plan != "pro":

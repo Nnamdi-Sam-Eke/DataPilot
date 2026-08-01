@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional
 import pandas as pd
@@ -8,14 +8,24 @@ import io
 import logging
 from datetime import datetime
 
+from utils.auth import get_current_user, get_user_plan
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # In-memory model store
 MODEL_STORE: Dict[str, Any] = {}
 
-# Hard cap on concurrent models — cleanup loop in main.py enforces this
-MAX_MODELS = 4
+# Per-user in-memory budget (Pro can hold up to this many concurrent models).
+# Free is still limited to 1 model per session (enforced in train_model).
+MAX_MODELS_PER_USER = 4
+
+# Global safety ceiling so a flood of users cannot OOM a single instance.
+# Cleanup in main.py also enforces per-user budgets.
+MAX_MODELS_GLOBAL = 80
+
+# Back-compat alias used by older cleanup code paths
+MAX_MODELS = MAX_MODELS_GLOBAL
 
 # How long a trained model lives in memory before the cleanup loop evicts it
 MODEL_EXPIRY_MINUTES_FREE = 10
@@ -24,6 +34,46 @@ MODEL_EXPIRY_MINUTES      = MODEL_EXPIRY_MINUTES_FREE  # default (used by file_s
 
 # Algorithms restricted to Pro plan
 _PRO_ONLY_ALGORITHMS = {"xgb", "svm"}
+
+def _user_model_ids(uid: str) -> list:
+    """Return model_ids owned by uid, oldest-first by created_at."""
+    owned = [
+        (mid, m)
+        for mid, m in MODEL_STORE.items()
+        if m.get("uid") == uid
+    ]
+    owned.sort(key=lambda kv: kv[1].get("last_accessed") or kv[1].get("created_at") or datetime.min)
+    return [mid for mid, _ in owned]
+
+
+def _evict_model(mid: str) -> None:
+    entry = MODEL_STORE.pop(mid, None)
+    if not entry:
+        return
+    fp = entry.get("file_path")
+    if fp:
+        try:
+            import os
+            if os.path.exists(fp):
+                os.remove(fp)
+        except Exception:
+            pass
+
+
+def _enforce_user_model_budget(uid: str, plan: str) -> None:
+    """
+    Keep at most MAX_MODELS_PER_USER models for this user in RAM.
+    Evicts least-recently-used entries first. Free users are primarily gated
+    by the 1-model-per-session rule; this is an extra safety net.
+    """
+    if not uid:
+        return
+    limit = MAX_MODELS_PER_USER if (plan or "").lower() == "pro" else 1
+    owned = _user_model_ids(uid)
+    while len(owned) > limit:
+        victim = owned.pop(0)
+        _evict_model(victim)
+
 
 def sanitize(obj):
     if isinstance(obj, dict):
@@ -46,7 +96,7 @@ def sanitize(obj):
 
 
 @router.post("/")
-async def train_model(payload: Dict):
+async def train_model(payload: Dict, authorization: str = Header(None)):
     """
     Train a model on a cached session dataset.
     payload = {
@@ -58,12 +108,18 @@ async def train_model(payload: Dict):
     """
     from routers.upload import get_session
 
+    # FIX: plan used to come straight from payload.get("plan") — client
+    # could just send {"plan": "pro"} to unlock XGBoost/SVM and multi-model
+    # training on a free account. Now derived server-side from the
+    # verified user's Firestore doc.
+    user   = get_current_user(authorization)
+    plan   = get_user_plan(user["id"])
+    is_pro = plan == "pro"
+
     session_id    = payload.get("session_id")
     target_column = payload.get("target_column")
     model_type    = payload.get("model_type", "rf")
     test_size     = float(payload.get("test_size", 0.2))
-    plan          = str(payload.get("plan", "free")).strip().lower()
-    is_pro        = plan == "pro"
 
     if not session_id or not target_column:
         raise HTTPException(status_code=400, detail="session_id and target_column are required.")
@@ -250,6 +306,7 @@ async def train_model(payload: Dict):
         # Store model for predictions and export
         model_id = str(uuid.uuid4())
         expiry   = MODEL_EXPIRY_MINUTES_PRO if is_pro else MODEL_EXPIRY_MINUTES_FREE
+        now = datetime.utcnow()
         MODEL_STORE[model_id] = {
             "model": model,
             "scaler": scaler if use_scaled else None,
@@ -262,13 +319,27 @@ async def train_model(payload: Dict):
             "metrics": metrics,
             "train_size": train_size_val,
             "test_size": test_size_val,
-            "created_at": datetime.utcnow(),
+            "created_at": now,
+            "last_accessed": now,
             "expiry_minutes": expiry,
             "session_id": session_id,   # used for free-plan 1-model enforcement
             "plan": plan,
+            "uid": user["id"],         # per-user budget (not global)
         }
 
-        logger.info(f"✅ Model trained: {model_type}, model_id={model_id}")
+        # Enforce per-user RAM budget (Pro ≤4, Free ≤1) without starving other users
+        _enforce_user_model_budget(user["id"], plan)
+
+        # Soft global safety net
+        if len(MODEL_STORE) > MAX_MODELS_GLOBAL:
+            ordered = sorted(
+                MODEL_STORE.items(),
+                key=lambda kv: kv[1].get("last_accessed") or kv[1].get("created_at") or datetime.min,
+            )
+            while len(MODEL_STORE) > MAX_MODELS_GLOBAL and ordered:
+                _evict_model(ordered.pop(0)[0])
+
+        logger.info(f"✅ Model trained: {model_type}, model_id={model_id}, uid={user['id']}")
 
         return sanitize({
             "model_id": model_id,
@@ -302,6 +373,10 @@ async def download_model(model_id: str):
         import joblib
 
         store = MODEL_STORE[model_id]
+        try:
+            store["last_accessed"] = datetime.utcnow()
+        except Exception:
+            pass
 
         # Bundle everything the user needs to reproduce predictions externally
         bundle = {

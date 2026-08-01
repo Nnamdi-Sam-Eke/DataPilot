@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Header
 from typing import Dict, Any
 import pandas as pd
 import numpy as np
 import io
 import logging
+
+from utils.auth import get_current_user, get_user_plan
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -30,16 +32,22 @@ def sanitize(obj):
 
 
 @router.post("/")
-async def predict(model_id: str, plan: str = "free", file: UploadFile = File(...)):
+async def predict(model_id: str, file: UploadFile = File(...), authorization: str = Header(None)):
     """
     Score a new CSV/XLSX file against a trained model. Pro plan only.
-    Query params: model_id, plan
+    Query params: model_id
     Body: multipart file upload
     """
     from routers.train import MODEL_STORE
     from sklearn.preprocessing import LabelEncoder
 
-    if plan.lower() != "pro":
+    # FIX: plan used to come from `plan: str = "free"` query param — client
+    # could just pass ?plan=pro to unlock file-upload scoring on a free
+    # account. Now derived server-side from the verified user's Firestore doc.
+    user = get_current_user(authorization)
+    plan = get_user_plan(user["id"])
+
+    if plan != "pro":
         raise HTTPException(
             status_code=403,
             detail="Scoring a new file upload is available on the Pro plan. Free users can run predictions on their current session dataset.",
@@ -49,6 +57,11 @@ async def predict(model_id: str, plan: str = "free", file: UploadFile = File(...
         raise HTTPException(status_code=404, detail="Model not found. Please train a model first.")
 
     store = MODEL_STORE[model_id]
+    try:
+        from datetime import datetime as _dt
+        store["last_accessed"] = _dt.utcnow()
+    except Exception:
+        pass
     model = store["model"]
     scaler = store["scaler"]
     feature_cols = store["feature_columns"]
@@ -183,6 +196,10 @@ async def predict_from_session(payload: dict):
         "model_id":  str,
         "session_id": str
     }
+
+    NOTE: this route has no Pro-only gate to begin with (free users are
+    meant to be able to predict on their session dataset), so no plan
+    lookup was added here — only the file-upload path above needed it.
     """
     from routers.train import MODEL_STORE
     from routers.upload import get_session
@@ -202,6 +219,11 @@ async def predict_from_session(payload: dict):
         raise HTTPException(status_code=404, detail="Session not found or expired.")
 
     store = MODEL_STORE[model_id]
+    try:
+        from datetime import datetime as _dt
+        store["last_accessed"] = _dt.utcnow()
+    except Exception:
+        pass
     model                  = store["model"]
     scaler                 = store["scaler"]
     feature_cols           = store["feature_columns"]

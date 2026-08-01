@@ -1,12 +1,16 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
+from fastapi.responses import JSONResponse, Response
 from typing import Dict, Any, List, Optional
 import pandas as pd
 import numpy as np
 import logging
 import os
+import json
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
+
+from utils.auth import get_current_user, get_user_plan
 
 # Load server .env (same pattern as insights.py)
 _ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
@@ -152,7 +156,7 @@ Write a concise, professional 3-4 sentence analyst summary for the report introd
 
 
 @router.post("/")
-async def generate_report(payload: Dict):
+async def generate_report(payload: Dict, authorization: str = Header(None)):
     """
     Generate a structured analysis report from a session.
     payload = {
@@ -165,6 +169,15 @@ async def generate_report(payload: Dict):
     """
     from routers.upload import get_session
 
+    # FIX: plan used to come from payload.get("plan") — unused for gating
+    # anywhere in this route today, but left as-is it's a live landmine:
+    # the moment a Pro-only report section gets added, it would be
+    # bypassable the same way it was in every other router. Deriving it
+    # from the verified user's Firestore doc now closes that before it
+    # opens.
+    user = get_current_user(authorization)
+    plan = get_user_plan(user["id"])
+
     session_id = payload.get("session_id")
     sections   = payload.get("sections", [
         "executive_summary", "data_quality", "statistics",
@@ -172,7 +185,6 @@ async def generate_report(payload: Dict):
     ])
     model_id   = payload.get("model_id")
     file_name  = payload.get("file_name", "dataset.csv")
-    plan       = str(payload.get("plan", "free")).strip().lower()
 
     groq_key = (payload.get("groq_key") or "").strip() or _get_server_groq_key()
 
@@ -417,10 +429,169 @@ async def generate_report(payload: Dict):
         except Exception:
             pass
 
-        return sanitize(report)
+        out = sanitize(report)
+        # Preview is free for everyone; downloads are Pro-only (enforced in /export).
+        out["can_download"] = plan == "pro"
+        out["plan"] = plan
+        return out
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Report generation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+
+
+# ── Export helpers (server-side file builders) ────────────────────────────────
+
+def _build_csv_export(report: dict) -> str:
+    rows = [["Section", "Field", "Value"]]
+    sec = report.get("sections") or {}
+
+    e = sec.get("executive_summary") or {}
+    if e:
+        rows.append(["Executive Summary", "Rows", e.get("total_rows", "")])
+        rows.append(["Executive Summary", "Columns", e.get("total_columns", "")])
+        rows.append(["Executive Summary", "Missing %", e.get("missing_values_pct", "")])
+        rows.append(["Executive Summary", "Duplicates", e.get("duplicate_rows", "")])
+        if e.get("summary"):
+            rows.append(["Executive Summary", "Summary", str(e.get("summary"))])
+
+    stats = sec.get("statistics") or {}
+    for col, s in stats.items():
+        if not isinstance(s, dict):
+            continue
+        rows.append(["Statistics", f"{col} - mean", s.get("mean", "")])
+        rows.append(["Statistics", f"{col} - std", s.get("std", "")])
+        rows.append(["Statistics", f"{col} - min", s.get("min", "")])
+        rows.append(["Statistics", f"{col} - max", s.get("max", "")])
+
+    top = (sec.get("correlations") or {}).get("top_correlations") or []
+    for c in top:
+        rows.append([
+            "Correlation",
+            f"{c.get('col_a', '')} <-> {c.get('col_b', '')}",
+            c.get("correlation", ""),
+        ])
+
+    for f in sec.get("feature_importance") or []:
+        rows.append(["Feature Importance", f.get("feature", ""), f.get("importance", "")])
+
+    for i, r in enumerate(sec.get("recommendations") or []):
+        rows.append(["Recommendation", f"#{i + 1}", str(r)])
+
+    if report.get("ai_narrative"):
+        rows.append(["AI Narrative", "text", str(report["ai_narrative"])])
+
+    def esc(cell):
+        s = "" if cell is None else str(cell)
+        if any(ch in s for ch in [",", '"', "\n"]):
+            return '"' + s.replace('"', '""') + '"'
+        return s
+
+    return "\n".join(",".join(esc(c) for c in row) for row in rows)
+
+
+def _build_json_export(report: dict) -> str:
+    payload = {k: v for k, v in report.items() if k not in ("can_download", "plan")}
+    return json.dumps(payload, indent=2, default=str)
+
+
+def _build_basic_html_export(report: dict, file_name: str) -> str:
+    sec = report.get("sections") or {}
+    e = sec.get("executive_summary") or {}
+    narrative = report.get("ai_narrative") or ""
+    generated = report.get("generated_at") or ""
+    recs = sec.get("recommendations") or []
+    rec_html = "".join(f"<li>{r}</li>" for r in recs)
+    narrative_html = f"<p style='line-height:1.6'>{narrative}</p>" if narrative else ""
+
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><title>DataPilot Report - {file_name}</title>
+<style>
+  body {{ font-family: system-ui, sans-serif; max-width: 860px; margin: 40px auto; color: #111; padding: 0 16px; }}
+  h1 {{ font-size: 22px; }} h2 {{ font-size: 16px; margin-top: 28px; }}
+  .meta {{ color: #666; font-size: 13px; margin-bottom: 24px; }}
+  table {{ border-collapse: collapse; width: 100%; font-size: 13px; }}
+  th, td {{ border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; }}
+  th {{ background: #f3f4f6; }}
+</style></head><body>
+  <h1>DataPilot Analysis Report</h1>
+  <div class="meta">{file_name} · Generated {generated}</div>
+  {narrative_html}
+  <h2>Executive Summary</h2>
+  <table>
+    <tr><th>Rows</th><td>{e.get('total_rows', '—')}</td></tr>
+    <tr><th>Columns</th><td>{e.get('total_columns', '—')}</td></tr>
+    <tr><th>Missing %</th><td>{e.get('missing_values_pct', '—')}</td></tr>
+    <tr><th>Duplicates</th><td>{e.get('duplicate_rows', '—')}</td></tr>
+  </table>
+  <h2>Recommendations</h2>
+  <ul>{rec_html or '<li>No recommendations.</li>'}</ul>
+  <p style="margin-top:40px;font-size:12px;color:#999">Generated with DataPilot</p>
+</body></html>"""
+
+
+@router.post("/export")
+async def export_report(payload: Dict, authorization: str = Header(None)):
+    """
+    Download a report file. Pro plan only.
+
+    Free users may generate and preview reports in-app; this endpoint is the
+    only sanctioned download path, so the plan check here is authoritative.
+    """
+    user = get_current_user(authorization)
+    plan = get_user_plan(user["id"])
+
+    if plan != "pro":
+        return JSONResponse(
+            status_code=403,
+            content={
+                "detail": (
+                    "Downloading reports is available on the Pro plan. "
+                    "Generate and preview for free, or upgrade to export HTML, CSV, JSON, or PDF."
+                ),
+                "plan_gate": "pro",
+            },
+        )
+
+    fmt = (payload.get("format") or "html").strip().lower()
+    if fmt not in ("html", "csv", "json"):
+        raise HTTPException(status_code=400, detail="format must be one of: html, csv, json")
+
+    report = payload.get("report")
+    if not isinstance(report, dict) or not report:
+        raise HTTPException(status_code=400, detail="report object is required for export")
+
+    file_name = (payload.get("file_name") or report.get("file_name") or "dataset").strip()
+    safe_base = "".join(c if c.isalnum() or c in "-._" else "_" for c in file_name)
+    if "." in safe_base:
+        safe_base = safe_base.rsplit(".", 1)[0]
+    safe_base = safe_base or "report"
+
+    if fmt == "csv":
+        body = _build_csv_export(report)
+        media = "text/csv; charset=utf-8"
+        filename = f"DataPilot_Report_{safe_base}.csv"
+    elif fmt == "json":
+        body = _build_json_export(report)
+        media = "application/json; charset=utf-8"
+        filename = f"DataPilot_Report_{safe_base}.json"
+    else:
+        client_html = payload.get("html")
+        if isinstance(client_html, str) and client_html.strip():
+            body = client_html
+        else:
+            body = _build_basic_html_export(report, file_name)
+        media = "text/html; charset=utf-8"
+        filename = f"DataPilot_Report_{safe_base}.html"
+
+    logger.info(f"Report export ({fmt}) for user {user['id']} — {filename}")
+    return Response(
+        content=body.encode("utf-8"),
+        media_type=media,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-DataPilot-Export": "1",
+        },
+    )

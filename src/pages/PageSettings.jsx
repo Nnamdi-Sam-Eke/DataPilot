@@ -191,6 +191,33 @@ export default function PageSettings() {
     { label: "AI conversations",   value: chatMessages?.filter(m => m.role === "user")?.length || 0 },
   ];
 
+  const plan = (userProfile?.plan || "free").toLowerCase();
+  const isPro = plan === "pro";
+
+  const planFeatures = isPro
+    ? [
+        "Unlimited local datasets",
+        "Up to 500,000 rows per file",
+        "Unlimited AI insight queries",
+        "All ML models (RF, LR, XGBoost, SVM)",
+        "Full code export (Python, Jupyter, MD)",
+        "Cloud backup + trained model restore",
+        "12-hour sessions",
+      ]
+    : [
+        "Unlimited local datasets",
+        "Up to 20,000 rows per file",
+        "15 AI insight queries per day",
+        "RF + Logistic Regression (1 model/session)",
+        "Python code export",
+        "Cloud backup (files + workspace metadata)",
+        "90-minute sessions",
+      ];
+
+  const planAction = isPro
+    ? { label: "Manage Subscription", path: "/billing" }
+    : { label: "Upgrade to Pro", path: "/pricing" };
+
   return (
     <div className="page-enter">
       {/* Header */}
@@ -354,22 +381,19 @@ export default function PageSettings() {
             </div>
             <PlanBadge plan={userProfile?.plan || "free"} />
             <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-              {[
-                "Unlimited local datasets",
-                "Up to 500K rows per file",
-                "Unlimited AI queries (with your key)",
-                "All ML models + predictions",
-                "Full code export (Python, Jupyter, MD)",
-                "Sessions persist in browser",
-              ].map(f => (
+              {planFeatures.map(f => (
                 <div key={f} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text2)" }}>
                   <IcoCheck size={14} />
                   {f}
                 </div>
               ))}
             </div>
-            <button className="btn-secondary" style={{ width: "100%", marginTop: 16, justifyContent: "center" }} onClick={() => navigate("/billing")}>
-              Manage Subscription
+            <button
+              className="btn-secondary"
+              style={{ width: "100%", marginTop: 16, justifyContent: "center" }}
+              onClick={() => navigate(planAction.path)}
+            >
+              {planAction.label}
             </button>
           </div>
 
@@ -398,8 +422,9 @@ export default function PageSettings() {
               <div style={{ fontSize: 13, marginBottom: 8 }}>Accent Color</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
                 {[
-                  "#6c63ff", "#3b82f6", "#22d3ee", "#10b981",
-                  "#6366f1", "#ec4899", "#f59e0b"
+                  "#6c63ff", "#3b82f6", "#22d3ee", "#14b8a6",
+                  "#10b981", "#f59e0b", "#f97316", "#ef4444",
+                  "#ec4899", "#8b5cf6"
                 ].map(color => (
                   <button
                     key={color}
@@ -428,17 +453,25 @@ export default function PageSettings() {
             </div>
             {[
               { label: "API key storage", value: "Browser only" },
-              // { label: "Data location",   value: "Local storage" },
               { label: "Version",         value: "0.9.0-beta" },
-              // { label: "Stack",           value: "React + FastAPI" },
               { label: "AI Model", value: "llama-3.3-70b" },
-              // { label: "Build date",      value: new Date().toLocaleDateString() },
             ].map(({ label, value }) => (
               <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--border)", fontSize: 12 }}>
                 <span style={{ color: "var(--text3)" }}>{label}</span>
                 <span style={{ color: "var(--text2)", fontWeight: 500, fontFamily: "'DM Mono', monospace" }}>{value}</span>
               </div>
             ))}
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", paddingTop: 12 }}>
+              <button type="button" onClick={() => navigate("/privacy")} style={{ background: "none", border: "none", padding: 0, color: "var(--accent2)", cursor: "pointer", fontSize: 12 }}>
+                Privacy Policy
+              </button>
+              <button type="button" onClick={() => navigate("/terms")} style={{ background: "none", border: "none", padding: 0, color: "var(--accent2)", cursor: "pointer", fontSize: 12 }}>
+                Terms of Service
+              </button>
+              <a href="mailto:hello@datapilot.ai" style={{ color: "var(--accent2)", fontSize: 12, textDecoration: "none" }}>
+                Contact
+              </a>
+            </div>
           </div>
 
           {/* Sign Out */}

@@ -25,7 +25,7 @@ const FEATURES = [
     rows: [
       { label: "File formats",              free: "CSV, XLSX",     pro: "CSV, XLSX, JSON" },
       { label: "Max file size",             free: "10 MB",         pro: "50 MB" },
-      { label: "Max rows per dataset",      free: "20,000",        pro: "200,000" },
+      { label: "Max rows per dataset",      free: "20,000",        pro: "500,000" },
     ],
   },
   {
@@ -61,7 +61,8 @@ const FEATURES = [
     category: "Exports & Reports",
     rows: [
       { label: "Python code export",        free: true,            pro: true },
-      { label: "PDF reports",               free: false,           pro: true },
+      { label: "Generate report (preview)", free: true,            pro: true },
+      { label: "Download report (HTML/CSV/JSON/PDF)", free: false, pro: true },
       { label: "Jupyter notebooks (.ipynb)", free: false,           pro: true },
     ],
   },
@@ -69,9 +70,9 @@ const FEATURES = [
     category: "Sessions & Storage",
     rows: [
       { label: "Session duration",          free: "90 min",        pro: "12 hours" },
-      { label: "Cloud backup",              free: "Files only",    pro: "Full workspace + models" },
-      { label: "Workspace restore",         free: "CSV/XLSX only", pro: "With trained models" },
-      { label: "AI insights queries/day",   free: "10/day",        pro: "Unlimited" },
+      { label: "Cloud backup",              free: "Files + workspace metadata", pro: "Files + workspace metadata + trained models" },
+      { label: "Workspace restore",         free: "Files + chat/cleaning/train config", pro: "Files + chat/cleaning/train config + trained models" },
+      { label: "AI insights queries/day",   free: "15/day",        pro: "Unlimited" },
     ],
   },
 ];
@@ -183,7 +184,7 @@ const data = text ? JSON.parse(text) : {};
           fontSize: "clamp(13px, 3vw, 15px)", color: "var(--text3)", maxWidth: 480,
           margin: "0 auto", lineHeight: 1.7, padding: "0 8px",
         }}>
-          Start free with 20K rows and 10 daily AI queries. Upgrade to Pro for advanced models (XGBoost, SVM), larger datasets (200K rows), and extended sessions.
+          Start free with 20K rows and 15 daily AI queries. Upgrade to Pro for advanced models (XGBoost, SVM), larger datasets (500K rows), and extended sessions.
         </p>
       </div>
 
@@ -232,7 +233,7 @@ const data = text ? JSON.parse(text) : {};
               "CSV and XLSX files (10 MB max)",
               "Up to 20,000 rows per dataset",
               "Data overview, stats & correlation matrix",
-              "10 AI insights queries per day",
+              "15 AI insights queries per day",
               "Charts and visualizations",
               "Data cleaning tools",
               "Random Forest, Logistic Regression only",
@@ -240,7 +241,7 @@ const data = text ? JSON.parse(text) : {};
               "Score current dataset",
               "Python code export + Markdown(.md) export",
               "90-minute session duration",
-              "Cloud backup (files only)",
+              "Cloud backup (files + workspace metadata)",
             ].map(f => (
               <div key={f} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: "clamp(12px, 2vw, 13px)", color: "var(--text2)" }}>
                 <span style={{ color: "var(--green)", flexShrink: 0 }}><IcoCheck size={14} /></span>
@@ -319,7 +320,7 @@ const data = text ? JSON.parse(text) : {};
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24, position: "relative" }}>
             {[
               "CSV, XLSX, and JSON files (50 MB max)",
-              "Up to 200,000 rows per dataset",
+              "Up to 500,000 rows per dataset",
               "Everything in Free plan",
               "Unlimited AI insights queries",
               "Compare mode — analyze multiple datasets side by side",
@@ -329,8 +330,8 @@ const data = text ? JSON.parse(text) : {};
               "Score new files and datasets",
               "PDF and Jupyter notebook exports",
               "12-hour session duration",
-              "Cloud backup (full workspace state + models)",
-              "Workspace restore with trained models",
+              "Cloud backup (files + workspace metadata + trained models)",
+              "Workspace restore (files + workspace metadata + trained models)",
             ].map(f => (
               <div key={f} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: "clamp(12px, 2vw, 13px)", color: "var(--text2)" }}>
                 <span style={{ color: "var(--accent2)", flexShrink: 0 }}><IcoCheck size={14} /></span>

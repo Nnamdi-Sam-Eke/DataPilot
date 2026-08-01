@@ -410,6 +410,7 @@ export default function PageReport({ setPage }) {
     groqKey,
     activeSessionExpired,
     userProfile,
+    user,
   } = useDataPilot();
 
   const plan  = (userProfile?.plan || "free").toLowerCase();
@@ -431,6 +432,14 @@ export default function PageReport({ setPage }) {
   // Charts from the visualization session
   const completedPlots = (savedPlots || []).filter(p => p.image && !p.error);
 
+  const authHeaders = async () => {
+    const headers = { "Content-Type": "application/json" };
+    if (user) {
+      headers.Authorization = `Bearer ${await user.getIdToken()}`;
+    }
+    return headers;
+  };
+
   const generate = async () => {
     if (!sessionId || activeSessionExpired) return;
     setGenerating(true);
@@ -439,14 +448,13 @@ export default function PageReport({ setPage }) {
       const selectedSections = Object.entries(checked).filter(([, v]) => v).map(([k]) => k);
       const res = await fetch(`${API_BASE}/report/`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await authHeaders(),
         body: JSON.stringify({
           session_id: sessionId,
           sections:   selectedSections,
           model_id:   modelId || undefined,
           file_name:  fileName,
           groq_key:   groqKey || undefined,
-          plan,
         }),
       });
       const data = await res.json();
@@ -459,36 +467,97 @@ export default function PageReport({ setPage }) {
     }
   };
 
-  const downloadReport = () => {
+  // Official download path — server enforces Pro. Client-side blob download
+  // alone is not authoritative (report JSON is needed for in-app preview).
+  const downloadReport = async () => {
     if (!report) return;
-    let content, mime, ext;
-    if (format === "HTML") {
-      content = buildHTMLReport(report, fileName, completedPlots, report.ai_narrative || "");
-      mime = "text/html"; ext = "html";
-    } else if (format === "CSV") {
-      content = buildCSVReport(report);
-      mime = "text/csv"; ext = "csv";
-    } else {
-      content = buildJSONReport(report);
-      mime = "application/json"; ext = "json";
+    if (!isPro) { setShowDownloadGate(true); return; }
+
+    const fmt = (format || "HTML").toLowerCase();
+    const payload = {
+      format: fmt === "html" ? "html" : fmt === "csv" ? "csv" : "json",
+      report,
+      file_name: fileName,
+    };
+    if (payload.format === "html") {
+      payload.html = buildHTMLReport(report, fileName, completedPlots, report.ai_narrative || "");
     }
-    const blob = new Blob([content], { type: mime });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = `DataPilot_Report_${fileName?.replace(/\.[^.]+$/, "") || "report"}.${ext}`;
-    a.click();
-    URL.revokeObjectURL(url);
+
+    try {
+      const res = await fetch(`${API_BASE}/report/export`, {
+        method: "POST",
+        headers: await authHeaders(),
+        body: JSON.stringify(payload),
+      });
+
+      if (res.status === 403) {
+        setShowDownloadGate(true);
+        return;
+      }
+      if (!res.ok) {
+        let detail = "Export failed";
+        try {
+          const err = await res.json();
+          detail = err.detail || detail;
+        } catch { /* ignore */ }
+        setError(typeof detail === "string" ? detail : "Export failed");
+        return;
+      }
+
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") || "";
+      const match = cd.match(/filename="?([^";]+)"?/i);
+      const fallbackExt = payload.format === "csv" ? "csv" : payload.format === "json" ? "json" : "html";
+      const filename = match?.[1] || `DataPilot_Report_${fileName?.replace(/\.[^.]+$/, "") || "report"}.${fallbackExt}`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e.message || "Export failed");
+    }
   };
 
-  const printReport = () => {
+  const printReport = async () => {
     if (!report) return;
-    const html = buildHTMLReport(report, fileName, completedPlots, report.ai_narrative || "");
-    const win  = window.open("", "_blank");
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 600);
+    if (!isPro) { setShowDownloadGate(true); return; }
+
+    // Same Pro gate as download — print/PDF is an export path.
+    try {
+      const res = await fetch(`${API_BASE}/report/export`, {
+        method: "POST",
+        headers: await authHeaders(),
+        body: JSON.stringify({
+          format: "html",
+          report,
+          file_name: fileName,
+          html: buildHTMLReport(report, fileName, completedPlots, report.ai_narrative || ""),
+        }),
+      });
+      if (res.status === 403) {
+        setShowDownloadGate(true);
+        return;
+      }
+      if (!res.ok) {
+        setError("Could not prepare print export");
+        return;
+      }
+      const html = await res.text();
+      const win = window.open("", "_blank");
+      if (!win) {
+        setError("Pop-up blocked — allow pop-ups to print the report");
+        return;
+      }
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      setTimeout(() => win.print(), 600);
+    } catch (e) {
+      setError(e.message || "Print failed");
+    }
   };
 
   if (!sessionId || activeSessionExpired) {
@@ -624,7 +693,7 @@ export default function PageReport({ setPage }) {
               compact
               icon="📥"
               feature="Download reports on Pro"
-              description="Generate reports for free. Download as HTML or PDF on the Pro plan."
+              description="Generate reports for free. Download in any format (HTML, CSV, JSON, PDF) on the Pro plan."
               onUpgrade={() => { setShowDownloadGate(false); setPage("/settings", { state: { highlightSection: "manage-subscription" } }); }}
             />
           )}

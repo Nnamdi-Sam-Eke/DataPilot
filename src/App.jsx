@@ -25,6 +25,7 @@ import { styles }               from "./styles.jsx";
 import { DataPilotProvider, useDataPilot, API_BASE } from "./DataPilotContext.jsx";
 import ApiFallback from "./components/ApiFallback.jsx";
 import FeedbackButton from "./components/FeedbackButton";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Sidebar      from "./components/Sidebar.jsx";
 import Topbar       from "./components/Topbar.jsx";
 import PageAuth     from "./pages/PageAuth.jsx";
@@ -44,6 +45,8 @@ import PageSettings     from "./pages/PageSettings.jsx";
 import PagePricing      from "./pages/PagePricing.jsx";
 import PageBilling      from "./pages/PageBilling.jsx";
 import PaymentSuccess from "./pages/PageSuccess.jsx";
+import PagePrivacy from "./pages/PagePrivacy.jsx";
+import PageTerms from "./pages/PageTerms.jsx";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -64,6 +67,8 @@ const PATH_TO_PAGE = {
   "/codegen": "codegen",
   "/settings": "settings",
   "/pricing": "pricing",
+  "/privacy": "privacy",
+  "/terms": "terms",
   "/billing": "billing",
   "/payment/success": "payment-success",
 };
@@ -396,7 +401,32 @@ function AppShell() {
         </div>
       );
     } else if (!user) {
-      body = <PageAuth />;
+      // Legal pages are public (no login required)
+      if (location.pathname === "/privacy") {
+        body = (
+          <div className="app-wrap">
+            <div className="grid-bg" />
+            <div className="main-area" style={{ width: "100%" }}>
+              <main className="page-content">
+                <PagePrivacy />
+              </main>
+            </div>
+          </div>
+        );
+      } else if (location.pathname === "/terms") {
+        body = (
+          <div className="app-wrap">
+            <div className="grid-bg" />
+            <div className="main-area" style={{ width: "100%" }}>
+              <main className="page-content">
+                <PageTerms />
+              </main>
+            </div>
+          </div>
+        );
+      } else {
+        body = <PageAuth />;
+      }
     } else if (showBetaProfile) {
       body = (
         <div className="app-wrap">
@@ -467,6 +497,8 @@ function AppShell() {
   <Route path="/pricing"       element={<PagePricing />} />
   <Route path="/billing"       element={<PageBilling />} />
   <Route path="/payment/success" element={<PaymentSuccess />} />
+  <Route path="/privacy"       element={<PagePrivacy />} />
+  <Route path="/terms"         element={<PageTerms />} />
   <Route path="/auth"          element={<PageAuth />} />
   <Route path="*"              element={<Navigate to="/dashboard" replace />} />
 </Routes>
@@ -573,11 +605,13 @@ function OfflinePopup({ open, onRetry, retrying }) {
 
 export default function App() {
   return (
-  <BrowserRouter>
-  <Analytics />
-  <DataPilotProvider>
-    <AppShell />
-  </DataPilotProvider>
-</BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Analytics />
+        <DataPilotProvider>
+          <AppShell />
+        </DataPilotProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }

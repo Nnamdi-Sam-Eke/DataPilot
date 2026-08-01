@@ -30,6 +30,23 @@ import {
 const DataPilotContext = createContext(null);
 
 const LS_KEY = "datapilot_state";
+const DEFAULT_ACCENT = "#6c63ff";
+const ACCENT_OPTIONS = new Set([
+  "#6c63ff",
+  "#3b82f6",
+  "#22d3ee",
+  "#14b8a6",
+  "#10b981",
+  "#f59e0b",
+  "#f97316",
+  "#ef4444",
+  "#ec4899",
+  "#8b5cf6",
+]);
+
+function normalizeAccentColor(value) {
+  return ACCENT_OPTIONS.has(value) ? value : DEFAULT_ACCENT;
+}
 
 // ── Workspace schema ──────────────────────────────────────────────────────────
 // All per-dataset analysis state lives in a "workspace" object that is stored
@@ -111,14 +128,16 @@ export function DataPilotProvider({ children }) {
     const saved = localStorage.getItem("theme");
     return saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   });
-  const [accentColor, setAccentColor] = useState(
-    () => localStorage.getItem("accentColor") || "#6c63ff"
-  );
+  const [accentColor, setAccentColor] = useState(() => {
+    const saved = localStorage.getItem("accentColor");
+    return normalizeAccentColor(saved || DEFAULT_ACCENT);
+  });
   useEffect(() => {
+    const safeAccent = normalizeAccentColor(accentColor);
     document.documentElement.setAttribute("data-theme", theme);
-    document.documentElement.setAttribute("data-accent", accentColor);
+    document.documentElement.setAttribute("data-accent", safeAccent);
     localStorage.setItem("theme", theme);
-    localStorage.setItem("accentColor", accentColor);
+    localStorage.setItem("accentColor", safeAccent);
   }, [theme, accentColor]);
   const toggleTheme = () => setTheme((prev) => (prev === "dark" ? "light" : "dark"));
 
@@ -754,8 +773,11 @@ export function DataPilotProvider({ children }) {
                   };
                   applyWorkspace(merged);
 
-                  // Models: restore each trained model back into backend MODEL_STORE
-                  if (cloudData.trainedModelsMetadata?.length) {
+                  // Models: restore each trained model back into backend MODEL_STORE.
+                  // Model restore is Pro-only (mirrors the save gate) — skip entirely
+                  // for Free/downgraded users rather than firing calls we know will 403.
+                  const isProNow = (profileData?.plan || "free").toLowerCase() === "pro";
+                  if (isProNow && cloudData.trainedModelsMetadata?.length) {
                     const restoredModels = await Promise.all(
                       cloudData.trainedModelsMetadata.map(async (m) => {
                         if (!m.r2Key) return m;

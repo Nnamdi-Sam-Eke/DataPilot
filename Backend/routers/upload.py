@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile
+from fastapi import APIRouter, UploadFile, Header
 import chardet
 import pandas as pd
 import io
@@ -10,6 +10,8 @@ import warnings
 import numpy as np
 import os
 import logging
+
+from utils.auth import get_current_user, get_user_plan
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -383,11 +385,18 @@ def get_correlation(session_id: str):
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.post("/upload")
-async def upload_endpoint(file: UploadFile, plan: str = "free"):
+async def upload_endpoint(file: UploadFile, authorization: str = Header(None)):
+    # FIX: plan used to come from `plan: str = "free"` query param — fully
+    # client-controlled, no auth required at all. Now derived server-side
+    # from the verified user's Firestore doc.
+    user = get_current_user(authorization)
+    plan = get_user_plan(user["id"])
     return await process_file(file, plan=plan)
 
 @router.post("/batch_uploads")
-async def batch_uploads_endpoint(files: List[UploadFile], plan: str = "free"):
+async def batch_uploads_endpoint(files: List[UploadFile], authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    plan = get_user_plan(user["id"])
     results = []
     for f in files:
         results.append(await process_file(f, plan=plan))
