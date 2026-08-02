@@ -726,7 +726,6 @@ export default function PageReport({ setPage }) {
                 overflowY: "auto",
                 flex: previewExpand.expanded ? 1 : undefined,
                 minHeight: 0,
-                height: previewExpand.expanded ? "100%" : "auto",
               }}
             >
 

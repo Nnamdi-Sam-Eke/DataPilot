@@ -3,7 +3,6 @@ import { Icons } from "../shared/icons.jsx";
 import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";
 import { saveDataset, findExistingDataset } from "../services/firestore";
 import { logActivity } from "../services/dashboard";
-import { fetchSessionData } from "../services/data.js";
 import { ExpandableCard, ExpandButton, useExpandable } from "../shared/Expandable.jsx";
 
 // ── per-session expiry label hook ─────────────────────────────────────────
@@ -88,7 +87,6 @@ export default function PageUpload({ setPage }) {
   const [errors, setErrors] = useState({}); // { name: msg }
   const [showUpload, setShowUpload] = useState(false);
   const [fading, setFading] = useState(false);
-  const [expandedPreview, setExpandedPreview] = useState(null);
   const fileInputRef = useRef(null);
   const previewExpand = useExpandable();
 
@@ -273,45 +271,6 @@ if (user?.uid) {
 
   const activeSession = activeIdx !== null ? sessions[activeIdx] : null;
   const expiryLabels = useSessionExpiryLabels(sessions);
-
-  useEffect(() => {
-    if (!previewExpand.expanded || !activeSession?.sessionId) {
-      setExpandedPreview(null);
-      return;
-    }
-
-    let cancelled = false;
-    const loadExpandedPreview = async () => {
-      try {
-        const data = await fetchSessionData(activeSession.sessionId);
-        if (cancelled) return;
-        setExpandedPreview({
-          columns: Array.isArray(data?.columns) ? data.columns : activeSession?.columns || [],
-          rows: Array.isArray(data?.data) ? data.data : [],
-        });
-      } catch (err) {
-        if (!cancelled) {
-          console.warn("Failed to load expanded upload preview:", err);
-          setExpandedPreview({
-            columns: activeSession?.preview?.columns || activeSession?.columns || [],
-            rows: Array.isArray(activeSession?.preview?.rows) ? activeSession.preview.rows : [],
-          });
-        }
-      }
-    };
-
-    loadExpandedPreview();
-    return () => {
-      cancelled = true;
-    };
-  }, [previewExpand.expanded, activeSession?.sessionId, activeSession?.columns, activeSession?.preview]);
-
-  const previewColumns = previewExpand.expanded
-    ? (expandedPreview?.columns || activeSession?.preview?.columns || activeSession?.columns || [])
-    : (activeSession?.preview?.columns || activeSession?.columns || []);
-  const previewRows = previewExpand.expanded
-    ? (expandedPreview?.rows || activeSession?.preview?.rows || [])
-    : (activeSession?.preview?.rows || []);
 
   // Expired session handler
   const handleReupload = () => {
@@ -773,15 +732,15 @@ if (user?.uid) {
                   <table className="data-table" style={{ minWidth: "max-content" }}>
                     <thead>
                       <tr>
-                        {previewColumns.map((c) => (
+                        {activeSession.preview.columns.map((c) => (
                           <th key={c}>{c}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {previewRows.map((row, i) => (
+                      {activeSession.preview.rows.map((row, i) => (
                         <tr key={i}>
-                          {previewColumns.map((col) => (
+                          {activeSession.preview.columns.map((col) => (
                             <td key={col} style={{ whiteSpace: "nowrap" }}>
                               {String(row[col] ?? "")}
                             </td>
@@ -800,9 +759,9 @@ if (user?.uid) {
                     flexShrink: 0,
                   }}
                 >
-                  Showing {previewRows.length} of{" "}
+                  Showing {activeSession.preview.rows.length} of{" "}
                   {activeSession.rowCount?.toLocaleString()} rows ·{" "}
-                  {previewColumns.length} columns
+                  {activeSession.preview.columns.length} columns
                 </div>
               </div>
             ) : sessions.length > 0 && activeSession && !activeSession.preview ? (

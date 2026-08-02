@@ -339,7 +339,6 @@ export default function PageCleaning({ setPage }) {
   const [flagCol, setFlagCol] = useState("");
   const [flagOp, setFlagOp] = useState("contains");
   const [flagValue, setFlagValue] = useState("");
-  const [expandedPreviewData, setExpandedPreviewData] = useState(null);
   // GroupBy + Aggregate
   const [groupByCols, setGroupByCols] = useState([]);
   const [groupByAggCol, setGroupByAggCol] = useState("");
@@ -393,36 +392,7 @@ export default function PageCleaning({ setPage }) {
       .then(r => r.ok ? r.json() : null)
       .then(d => d?.data && columns?.length ? setPreview({ columns, rows: d.data }) : null)
       .catch(() => null);
-  }, [sessionId, activeSessionExpired, columns, setPreview]);
-
-  useEffect(() => {
-    if (!previewExpand.expanded || !sessionId || activeSessionExpired) {
-      setExpandedPreviewData(null);
-      return;
-    }
-
-    let cancelled = false;
-    const loadExpandedPreview = async () => {
-      try {
-        const limit = Math.min(Number(rowCount) || 10000, 50000);
-        const response = await fetch(`${API_BASE}/data/${sessionId}?limit=${limit}`);
-        if (!response.ok) return;
-        const data = await response.json();
-        if (cancelled) return;
-        setExpandedPreviewData({
-          columns: Array.isArray(data?.columns) ? data.columns : columns || [],
-          rows: Array.isArray(data?.data) ? data.data : [],
-        });
-      } catch (err) {
-        console.warn("Failed to load expanded cleaning preview:", err);
-      }
-    };
-
-    loadExpandedPreview();
-    return () => {
-      cancelled = true;
-    };
-  }, [previewExpand.expanded, sessionId, activeSessionExpired, columns, rowCount]);
+  }, [sessionId]);
 
   // Keyboard arrow key support for tab scrolling
   useEffect(() => {
@@ -542,12 +512,6 @@ export default function PageCleaning({ setPage }) {
   const safeColumns        = Array.isArray(columns) ? columns : [];
   const safePreviewColumns = Array.isArray(preview?.columns) ? preview.columns : [];
   const safePreviewRows    = Array.isArray(preview?.rows) ? preview.rows : [];
-  const visiblePreviewColumns = previewExpand.expanded && expandedPreviewData?.columns?.length
-    ? expandedPreviewData.columns
-    : safePreviewColumns;
-  const visiblePreviewRows = previewExpand.expanded && expandedPreviewData?.rows?.length
-    ? expandedPreviewData.rows
-    : safePreviewRows;
 
   const colsWithMissing = safeColumns.filter(
     (c) => parseFloat(missingPct(c, summary, rowCount) ?? 0) > 0
@@ -1613,20 +1577,20 @@ export default function PageCleaning({ setPage }) {
                   <path d={Icons.eye} />
                 </svg>
                 Live Preview
-                <span className="tag tag-green" style={{ marginLeft:"auto" }}>{previewExpand.expanded ? `${(rowCount || visiblePreviewRows.length).toLocaleString()} rows` : "8 rows"}</span>
+                <span className="tag tag-green" style={{ marginLeft:"auto" }}>8 rows</span>
                 <ExpandButton expanded={previewExpand.expanded} onClick={previewExpand.toggle} />
               </div>
-              <div style={{ overflow: "auto", flex: previewExpand.expanded ? 1 : undefined, minHeight: 0 }}>
+              <div style={{ overflow: previewExpand.expanded ? "auto" : "auto", flex: previewExpand.expanded ? 1 : undefined, minHeight: 0 }}>
                 <table className="data-table" style={{ minWidth:"max-content" }}>
                   <thead>
                     <tr>
-                      {(previewExpand.expanded ? visiblePreviewColumns : visiblePreviewColumns.slice(0,6)).map(c => <th key={c}>{c}</th>)}
+                      {(previewExpand.expanded ? safePreviewColumns : safePreviewColumns.slice(0,6)).map(c => <th key={c}>{c}</th>)}
                     </tr>
                   </thead>
                   <tbody>
-                    {visiblePreviewRows.map((row, i) => (
+                    {safePreviewRows.slice(0,8).map((row, i) => (
                       <tr key={i}>
-                        {(previewExpand.expanded ? visiblePreviewColumns : visiblePreviewColumns.slice(0,6)).map(col => (
+                        {(previewExpand.expanded ? safePreviewColumns : safePreviewColumns.slice(0,6)).map(col => (
                           <td key={col}>
                             {row[col] == null || row[col] === ""
                               ? <span style={{ color:"var(--red)", fontSize:10 }}>null</span>
