@@ -7,7 +7,7 @@ import os
 import io
 import uuid
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import chardet
@@ -17,7 +17,7 @@ from utils.b2_client import get_b2, b2_available, BUCKET, mime_from_ext
 from utils.auth import get_current_user, require_owns_key, get_user_plan
 
 from routers.upload import DATA_CACHE, create_session, READERS, generate_summary
-from routers.upload import sanitize_for_json, PLAN_EXPIRY
+from routers.upload import sanitize_for_json, PLAN_EXPIRY, utc_iso
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ def store_file_to_b2(uid: str, dataset_doc_id: str, file_name: str, content: byt
         ContentType=mime_from_ext(ext),
         Metadata={
             "original_name":  file_name,
-            "uploaded_at":    datetime.utcnow().isoformat(),
+            "uploaded_at":    utc_iso(),
             "dataset_doc_id": dataset_doc_id,
         },
     )
@@ -209,7 +209,7 @@ async def snapshot_session_to_b2(payload: dict, authorization: str = Header(None
             ContentType="text/csv",
             Metadata={
                 "original_name": csv_name,
-                "uploaded_at":   datetime.utcnow().isoformat(),
+                "uploaded_at":   utc_iso(),
                 "session_id":    session_id,
                 "is_promoted":   "true",
             },
@@ -303,7 +303,7 @@ async def save_model_to_r2(payload: dict, authorization: str = Header(None)):
             "metrics":                store.get("metrics", {}),
             "train_size":             store.get("train_size"),
             "test_size":              store.get("test_size"),
-            "trained_at":             store["created_at"].isoformat(),
+            "trained_at":             utc_iso(store["created_at"]),
             "datapilot_version":      "1.0",
         }
 
@@ -392,7 +392,7 @@ async def restore_model_from_r2(payload: dict, authorization: str = Header(None)
             "metrics":                bundle.get("metrics", {}),
             "train_size":             bundle.get("train_size"),
             "test_size":              bundle.get("test_size"),
-            "created_at":             datetime.utcnow(),
+            "created_at":             datetime.now(timezone.utc),
             "expiry_minutes":         MODEL_EXPIRY_MINUTES,
         }
 

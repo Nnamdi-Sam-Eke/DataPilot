@@ -476,10 +476,10 @@ export function DataPilotProvider({ children }) {
           completed:   false,
         });
 
-        // Load profile
+        // Load profile — declare outside try so session/model restore can read plan
+        let profileData = { displayName: "", email: firebaseUser.email || "", plan: "free" };
         try {
           const userSnap = await getDoc(doc(db, "users", firebaseUser.uid));
-          let profileData = { displayName: "", email: firebaseUser.email || "", plan: "free" };
           if (userSnap.exists()) {
             const data = userSnap.data();
             profileData = {
@@ -501,6 +501,7 @@ export function DataPilotProvider({ children }) {
         } catch (err) {
           console.error("Failed to load profile:", err);
           markOfflineIfFirestoreErr(err);
+          setUserProfileRaw(profileData);
         }
 
         // Load projects

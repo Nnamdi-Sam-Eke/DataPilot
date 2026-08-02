@@ -6,7 +6,7 @@ import numpy as np
 import uuid
 import io
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from utils.auth import get_current_user, get_user_plan
 
@@ -15,6 +15,15 @@ logger = logging.getLogger(__name__)
 
 # In-memory model store
 MODEL_STORE: Dict[str, Any] = {}
+
+
+def utc_iso(dt: datetime | None = None) -> str:
+    """Return an explicit UTC timestamp string with a trailing Z suffix."""
+    if dt is None:
+        dt = datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 # Per-user in-memory budget (Pro can hold up to this many concurrent models).
 # Free is still limited to 1 model per session (enforced in train_model).
@@ -306,7 +315,7 @@ async def train_model(payload: Dict, authorization: str = Header(None)):
         # Store model for predictions and export
         model_id = str(uuid.uuid4())
         expiry   = MODEL_EXPIRY_MINUTES_PRO if is_pro else MODEL_EXPIRY_MINUTES_FREE
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         MODEL_STORE[model_id] = {
             "model": model,
             "scaler": scaler if use_scaled else None,
@@ -374,7 +383,7 @@ async def download_model(model_id: str):
 
         store = MODEL_STORE[model_id]
         try:
-            store["last_accessed"] = datetime.utcnow()
+            store["last_accessed"] = datetime.now(timezone.utc)
         except Exception:
             pass
 
@@ -390,7 +399,7 @@ async def download_model(model_id: str):
             "metrics":         store.get("metrics", {}),
             "train_size":      store.get("train_size"),
             "test_size":       store.get("test_size"),
-            "trained_at":      store["created_at"].isoformat(),
+            "trained_at":      utc_iso(store["created_at"]),
             "datapilot_version": "1.0",
         }
 

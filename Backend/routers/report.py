@@ -167,7 +167,7 @@ async def generate_report(payload: Dict, authorization: str = Header(None)):
         "groq_key": str (optional) — if provided, generates an AI narrative
     }
     """
-    from routers.upload import get_session
+    from routers.upload import get_session, utc_iso
 
     # FIX: plan used to come from payload.get("plan") — unused for gating
     # anywhere in this route today, but left as-is it's a live landmine:
@@ -196,7 +196,7 @@ async def generate_report(payload: Dict, authorization: str = Header(None)):
         raise HTTPException(status_code=404, detail="Session not found or expired.")
 
     report: Dict[str, Any] = {
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": utc_iso(),
         "file_name": file_name,
         "sections": {},
         "ai_narrative": "",
@@ -424,7 +424,7 @@ async def generate_report(payload: Dict, authorization: str = Header(None)):
                 "corr_matrix": report["sections"].get("correlations", {}).get("matrix"),
                 "top_corrs": report["sections"].get("correlations", {}).get("top_correlations"),
                 "numeric_cols": numeric_cols,
-                "stored_at": datetime.utcnow().isoformat(),
+                "stored_at": utc_iso(),
             }
         except Exception:
             pass

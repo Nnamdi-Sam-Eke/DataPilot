@@ -4,7 +4,7 @@ import pandas as pd
 import io
 from typing import Dict, Any, List
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import math
 import warnings
 import numpy as np
@@ -38,6 +38,16 @@ USER_STATS = {
 }
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+def utc_iso(dt: datetime | None = None) -> str:
+    """Return an explicit UTC timestamp string with a trailing Z suffix."""
+    if dt is None:
+        dt = datetime.now(timezone.utc)
+    if isinstance(dt, pd.Timestamp):
+        dt = dt.to_pydatetime()
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 def detect_encoding(content: bytes) -> str:
     result = chardet.detect(content)
@@ -74,13 +84,13 @@ def create_session(df: pd.DataFrame, plan: str = "free", file_name: str = None) 
     """Create a new session."""
     session_id = str(uuid.uuid4())
     expiry_minutes = PLAN_EXPIRY.get(plan.lower(), PLAN_EXPIRY["free"])
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     DATA_CACHE[session_id] = {
         "df": df,
         "created_at":    now,
         "last_accessed": now,   # Updated on every get_session call — inactivity timer
-        "uploaded_at":   now.isoformat(),
+        "uploaded_at":   utc_iso(now),
         "expiry_minutes": expiry_minutes,
         "plan": plan.lower(),
     }
@@ -100,7 +110,7 @@ def get_session(session_id: str):
     # A 90-minute session uploaded at 10:00 AM expires at 11:30 AM regardless
     # of logout/login.
     created_at = session["created_at"]
-    if datetime.utcnow() - created_at > timedelta(minutes=expiry_minutes):
+    if datetime.now(timezone.utc) - created_at > timedelta(minutes=expiry_minutes):
         del DATA_CACHE[session_id]
         return None
     return session["df"]
@@ -123,8 +133,8 @@ def generate_summary(df: pd.DataFrame) -> Dict[str, Any]:
                     s_max = converted.max()
                     summary.setdefault(col, {})
                     summary[col].update({
-                        "min":    s_min.isoformat() if pd.notna(s_min) else None,
-                        "max":    s_max.isoformat() if pd.notna(s_max) else None,
+                        "min":    utc_iso(s_min) if pd.notna(s_min) else None,
+                        "max":    utc_iso(s_max) if pd.notna(s_max) else None,
                         "count":  int(converted.notna().sum()),
                         "unique": int(converted.nunique(dropna=True)),
                     })
@@ -139,9 +149,9 @@ def sanitize_for_json(obj):
     if isinstance(obj, (list, tuple)):
         return [sanitize_for_json(v) for v in obj]
     if isinstance(obj, pd.Timestamp):
-        return obj.isoformat()
+        return utc_iso(obj)
     if isinstance(obj, datetime):
-        return obj.isoformat()
+        return utc_iso(obj)
     if isinstance(obj, np.generic):
         try:
             py = obj.item()
@@ -174,16 +184,20 @@ def _mime_from_filename(file_name: str) -> str:
     return mime_from_ext(ext)
 
 
-def _store_to_b2(file_name: str, content: bytes) -> str | None:
+def _store_to_b2(file_name: str, content: bytes, uid: str) -> str | None:
     """
     Upload raw file bytes to Backblaze B2.
     Returns the storage key, or None if B2 is not configured or the upload fails.
-    Key pattern: files/{uuid}/{file_name}
+    Key pattern MUST be namespaced under the caller's uid so /session/restore
+    and /file/delete can authorize the caller via require_owns_key().
     """
     if not b2_available():
         return None
+    if not uid:
+        logger.warning("B2 store skipped: missing uid (cannot namespace key)")
+        return None
     try:
-        storage_key = f"files/{uuid.uuid4()}/{file_name}"
+        storage_key = f"users/{uid}/files/{uuid.uuid4()}/{file_name}"
         get_b2().put_object(
             Bucket=BUCKET,
             Key=storage_key,
@@ -191,7 +205,8 @@ def _store_to_b2(file_name: str, content: bytes) -> str | None:
             ContentType=_mime_from_filename(file_name),
             Metadata={
                 "original_name": file_name,
-                "uploaded_at":   datetime.utcnow().isoformat(),
+                "uploaded_at":   utc_iso(),
+                "uid":           uid,
             },
         )
         logger.info(f"✅ Stored to B2: {storage_key}")
@@ -202,7 +217,7 @@ def _store_to_b2(file_name: str, content: bytes) -> str | None:
 
 # ── File processor ────────────────────────────────────────────────────────────
 
-async def process_file(file: UploadFile, plan: str = "free") -> Dict[str, Any]:
+async def process_file(file: UploadFile, plan: str = "free", uid: str | None = None) -> Dict[str, Any]:
     # FIX: fall back to extension-based reader for application/octet-stream
     # (common when uploading via mobile, Postman, or drag-and-drop on some
     # browsers) so valid CSV/XLSX files are never silently rejected.
@@ -318,7 +333,7 @@ async def process_file(file: UploadFile, plan: str = "free") -> Dict[str, Any]:
         USER_STATS["total_rows_processed"] = int(row_count)
 
     # Store raw file to B2 for cross-device session restore
-    storage_key = _store_to_b2(file.filename, content)
+    storage_key = _store_to_b2(file.filename, content, uid=uid or "")
 
     result = {
         "file_name":            file.filename,
@@ -391,7 +406,7 @@ async def upload_endpoint(file: UploadFile, authorization: str = Header(None)):
     # from the verified user's Firestore doc.
     user = get_current_user(authorization)
     plan = get_user_plan(user["id"])
-    return await process_file(file, plan=plan)
+    return await process_file(file, plan=plan, uid=user["id"])
 
 @router.post("/batch_uploads")
 async def batch_uploads_endpoint(files: List[UploadFile], authorization: str = Header(None)):
@@ -399,5 +414,5 @@ async def batch_uploads_endpoint(files: List[UploadFile], authorization: str = H
     plan = get_user_plan(user["id"])
     results = []
     for f in files:
-        results.append(await process_file(f, plan=plan))
+        results.append(await process_file(f, plan=plan, uid=user["id"]))
     return results
