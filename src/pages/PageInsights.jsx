@@ -164,6 +164,19 @@ export default function PageInsights({ setPage }) {
   );
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Daily free-tier limit lock: once hit, input stays locked until the date rolls over
+  // (backend is still the source of truth — this just keeps the FE state consistent on refresh)
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+  const [limitReached, setLimitReached] = useState(() => {
+    try {
+      return localStorage.getItem("dp_limit_date") === todayStr();
+    } catch {
+      return false;
+    }
+  });
+  const [limitPopup, setLimitPopup] = useState({ open: false, minimized: false });
+
   const bottomRef = useRef(null);
   const messagesRef = useRef(null);
   // Track previous sessionId so we only reset when the dataset actually changes
@@ -205,7 +218,7 @@ export default function PageInsights({ setPage }) {
   }, [messages, loading]);
 
   const handleSend = async (text) => {
-    const canSend = sessionId && !activeSessionExpired && !loading;
+    const canSend = sessionId && !activeSessionExpired && !loading && !(limitReached && !isPro);
     const msg = (text || input).trim();
     if (!msg || !canSend) return;
 
@@ -235,10 +248,20 @@ export default function PageInsights({ setPage }) {
       const data = await res.json();
       const isPlanGate = data.plan_gate === "pro";
       const displayText = isPlanGate
-        ? "⚠️ Daily AI insight limit reached — you've used your 15 free queries for today. Upgrade to Pro for unlimited queries."
+        ? "⚠️ Daily AI insight limit reached"
         : data.error
           ? `⚠️ ${data.error}`
           : data.response;
+
+      if (isPlanGate) {
+        try {
+          localStorage.setItem("dp_limit_date", todayStr());
+        } catch {
+          /* ignore storage errors */
+        }
+        setLimitReached(true);
+        setLimitPopup({ open: true, minimized: false });
+      }
 
       setMessages((m) => [
         ...m,
@@ -362,25 +385,6 @@ export default function PageInsights({ setPage }) {
                         <RichText text={m.text} />
                       </div>
                     </div>
-                    {m.plan_gate === "pro" && (
-                      <button
-                        onClick={() => setPage("/settings", { state: { highlightSection: "manage-subscription" } })}
-                        style={{
-                          marginTop: 4,
-                          padding: 0,
-                          border: "none",
-                          background: "transparent",
-                          color: "var(--accent2)",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          textDecoration: "underline",
-                          alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-                        }}
-                      >
-                        Upgrade to Pro →
-                      </button>
-                    )}
                     {m.ts && (
                       <div style={{ fontSize: 9.5, color: "var(--text3)", fontFamily: "'DM Mono', monospace", paddingLeft: 2, paddingRight: 2 }}>
                         {new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -417,7 +421,7 @@ export default function PageInsights({ setPage }) {
           </div>
 
           <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
-            {sessionId && !activeSessionExpired && (
+            {sessionId && !activeSessionExpired && !(limitReached && !isPro) && (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
                 {SUGGESTIONS.map((s, i) => (
                   <button
@@ -453,21 +457,23 @@ export default function PageInsights({ setPage }) {
               <input
                 className="input-field"
                 placeholder={
-                  sessionId && !activeSessionExpired
-                    ? "Ask anything about your dataset..."
-                    : activeSessionExpired
-                      ? "Session expired — re-upload to continue…"
-                      : "Upload a dataset first…"
+                  limitReached && !isPro
+                    ? "Daily limit reached — resets at midnight, or upgrade to Pro"
+                    : sessionId && !activeSessionExpired
+                      ? "Ask anything about your dataset..."
+                      : activeSessionExpired
+                        ? "Session expired — re-upload to continue…"
+                        : "Upload a dataset first…"
                 }
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                disabled={!sessionId || activeSessionExpired || loading}
+                disabled={!sessionId || activeSessionExpired || loading || (limitReached && !isPro)}
               />
               <button
                 className="btn-primary"
                 onClick={() => handleSend()}
-                disabled={!sessionId || activeSessionExpired || loading}
+                disabled={!sessionId || activeSessionExpired || loading || (limitReached && !isPro)}
                 style={{ flexShrink: 0 }}
               >
                 <svg
@@ -536,6 +542,109 @@ export default function PageInsights({ setPage }) {
         </div>
       </div>
       <NextStepBar label="Visualize Data" to="/visualization" setPage={setPage} note="Next: generate charts and explore your data visually" />
+
+      {limitPopup.open && (
+        limitPopup.minimized ? (
+          <button
+            onClick={() => setLimitPopup({ open: true, minimized: false })}
+            style={{
+              position: "fixed",
+              bottom: 20,
+              left: 20,
+              zIndex: 40,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "8px 12px",
+              borderRadius: 999,
+              border: "1px solid rgba(139,92,246,0.35)",
+              background: "var(--bg2)",
+              color: "var(--accent)",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 6px 18px rgba(0,0,0,0.25)",
+            }}
+          >
+            ⚠️ Limit reached
+          </button>
+        ) : (
+          <div
+            style={{
+              position: "fixed",
+              bottom: 20,
+              left: 20,
+              zIndex: 40,
+              width: 300,
+              background: "var(--bg2)",
+              border: "1px solid rgba(139,92,246,0.3)",
+              borderRadius: 12,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
+              padding: 14,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--accent)" }}>
+                ⚠️ Daily limit reached
+              </div>
+              <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                <button
+                  onClick={() => setLimitPopup((p) => ({ ...p, minimized: true }))}
+                  title="Minimize"
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--text3)",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    lineHeight: 1,
+                    padding: 2,
+                  }}
+                >
+                  –
+                </button>
+                <button
+                  onClick={() => setLimitPopup({ open: false, minimized: false })}
+                  title="Close"
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--text3)",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    lineHeight: 1,
+                    padding: 2,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text2)", lineHeight: 1.5, marginBottom: 12 }}>
+              You've used your 15 free queries for today. Upgrade to Pro for unlimited queries.
+            </div>
+            <button
+              onClick={() => {
+                setPage("/settings", { state: { highlightSection: "manage-subscription" } });
+                setLimitPopup({ open: false, minimized: false });
+              }}
+              style={{
+                width: "100%",
+                padding: "8px 0",
+                borderRadius: 8,
+                border: "none",
+                background: "var(--accent)",
+                color: "#fff",
+                fontSize: 12.5,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Upgrade to Pro →
+            </button>
+          </div>
+        )
+      )}
     </div>
   );
 }

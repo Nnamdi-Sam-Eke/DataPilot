@@ -9,7 +9,7 @@ import logging
 import pandas as pd
 import numpy as np
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -73,7 +73,7 @@ async def cleanup_expired_sessions():
             # Use absolute expiry from created_at to match frontend's timer
             expired = [
                 sid for sid, session in DATA_CACHE.items()
-                if datetime.utcnow() - session["created_at"] > timedelta(
+                if datetime.now(timezone.utc) - session["created_at"] > timedelta(
                     minutes=session.get("expiry_minutes", 180)
                 )
             ]
@@ -122,7 +122,7 @@ async def cleanup_expired_sessions():
 
                 expired_models = [
                     mid for mid, m in MODEL_STORE.items()
-                    if datetime.utcnow() - m.get("created_at", datetime.utcnow())
+                    if datetime.now(timezone.utc) - m.get("created_at", datetime.now(timezone.utc))
                     > timedelta(minutes=m.get("expiry_minutes", 60))
                 ]
 
@@ -172,7 +172,7 @@ async def cleanup_expired_sessions():
                             MODEL_STORE.items(),
                             key=lambda kv: kv[1].get("last_accessed")
                             or kv[1].get("created_at")
-                            or datetime.utcnow(),
+                            or datetime.now(timezone.utc),
                         )
                         while len(MODEL_STORE) > MAX_MODELS_GLOBAL and ordered:
                             oldest_mid = ordered.pop(0)[0]
@@ -442,7 +442,7 @@ async def cache_stats():
     for session_id, session in DATA_CACHE.items():
         expiry_min = session.get("expiry_minutes", EXPIRY_MINUTES)
         last_touch = session.get("last_accessed") or session["created_at"]
-        if datetime.utcnow() - last_touch > timedelta(minutes=expiry_min):
+        if datetime.now(timezone.utc) - last_touch > timedelta(minutes=expiry_min):
             expired_sessions += 1
         else:
             active_sessions += 1
