@@ -8,7 +8,7 @@ Memory design: undo history is stored as Parquet bytes (not live DataFrames),
 which is 5-10x smaller. Cap is 5 snapshots to bound worst-case RAM usage.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, List
@@ -18,6 +18,8 @@ import io
 import copy
 import logging
 import ast
+
+from utils.auth import get_current_user, get_user_plan
 
 router = APIRouter(prefix="/clean", tags=["clean"])
 
@@ -229,7 +231,8 @@ class CustomFormulaBody(BaseModel):
 # ── endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("/{session_id}/summary")
-def get_summary(session_id: str):
+def get_summary(session_id: str, authorization: str = Header(None)):
+    user = get_current_user(authorization)
     df = _get_or_init(session_id)
     return {
         "columns":   list(df.columns),
@@ -239,7 +242,8 @@ def get_summary(session_id: str):
 
 
 @router.post("/{session_id}/fill_missing")
-def fill_missing(session_id: str, body: FillMissingBody):
+def fill_missing(session_id: str, body: FillMissingBody, authorization: str = Header(None)):
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
 
     if body.column not in df.columns:
@@ -299,7 +303,8 @@ def fill_missing(session_id: str, body: FillMissingBody):
 
 
 @router.post("/{session_id}/fill_all_missing")
-def fill_all_missing(session_id: str, body: FillAllMissingBody):
+def fill_all_missing(session_id: str, body: FillAllMissingBody, authorization: str = Header(None)):
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
     total_filled = 0
     applied = {}
@@ -356,7 +361,8 @@ def fill_all_missing(session_id: str, body: FillAllMissingBody):
 
 
 @router.post("/{session_id}/drop_column")
-def drop_column(session_id: str, body: DropColumnBody):
+def drop_column(session_id: str, body: DropColumnBody, authorization: str = Header(None)):
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
     if body.column not in df.columns:
         raise HTTPException(status_code=400, detail=f"Column '{body.column}' not found.")
@@ -366,7 +372,8 @@ def drop_column(session_id: str, body: DropColumnBody):
 
 
 @router.post("/{session_id}/rename_column")
-def rename_column(session_id: str, body: RenameColumnBody):
+def rename_column(session_id: str, body: RenameColumnBody, authorization: str = Header(None)):
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
     if body.old_name not in df.columns:
         raise HTTPException(status_code=400, detail=f"Column '{body.old_name}' not found.")
@@ -378,7 +385,8 @@ def rename_column(session_id: str, body: RenameColumnBody):
 
 
 @router.post("/{session_id}/drop_duplicates")
-def drop_duplicates(session_id: str):
+def drop_duplicates(session_id: str, authorization: str = Header(None)):
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
     n_before = len(df)
     df = df.drop_duplicates()
@@ -388,7 +396,8 @@ def drop_duplicates(session_id: str):
 
 
 @router.post("/{session_id}/cast_column")
-def cast_column(session_id: str, body: CastColumnBody):
+def cast_column(session_id: str, body: CastColumnBody, authorization: str = Header(None)):
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
     if body.column not in df.columns:
         raise HTTPException(status_code=400, detail=f"Column '{body.column}' not found.")
@@ -407,6 +416,8 @@ def cast_column(session_id: str, body: CastColumnBody):
             df[body.column] = col.map(lambda x: str(x).strip().lower() in ("true","1","yes","y"))
         else:
             raise HTTPException(status_code=400, detail=f"Unknown dtype: {body.dtype}")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Cast failed: {str(e)}")
 
@@ -419,7 +430,8 @@ def cast_column(session_id: str, body: CastColumnBody):
 
 
 @router.post("/{session_id}/encode_column")
-def encode_column(session_id: str, body: EncodeColumnBody):
+def encode_column(session_id: str, body: EncodeColumnBody, authorization: str = Header(None)):
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
 
     if body.column not in df.columns:
@@ -463,8 +475,9 @@ def encode_column(session_id: str, body: EncodeColumnBody):
 # ── NEW endpoints ─────────────────────────────────────────────────────────────
 
 @router.post("/{session_id}/cap_outliers")
-def cap_outliers(session_id: str, body: CapOutliersBody):
+def cap_outliers(session_id: str, body: CapOutliersBody, authorization: str = Header(None)):
     """Detect and cap or remove outliers using IQR or z-score method."""
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
     col = body.column
     if col not in df.columns:
@@ -513,8 +526,9 @@ def cap_outliers(session_id: str, body: CapOutliersBody):
 
 
 @router.post("/{session_id}/string_op")
-def string_op(session_id: str, body: StringOpBody):
+def string_op(session_id: str, body: StringOpBody, authorization: str = Header(None)):
     """Apply a string transformation to a column (trim, case, strip special chars)."""
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
     col = body.column
     if col not in df.columns:
@@ -536,8 +550,9 @@ def string_op(session_id: str, body: StringOpBody):
 
 
 @router.post("/{session_id}/filter_rows")
-def filter_rows(session_id: str, body: FilterRowsBody):
+def filter_rows(session_id: str, body: FilterRowsBody, authorization: str = Header(None)):
     """Keep or drop rows matching a column condition."""
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
     col = body.column
     if col not in df.columns:
@@ -580,10 +595,11 @@ def filter_rows(session_id: str, body: FilterRowsBody):
 
 
 @router.post("/{session_id}/find_replace")
-def find_replace(session_id: str, body: FindReplaceBody):
+def find_replace(session_id: str, body: FindReplaceBody, authorization: str = Header(None)):
     """Replace specific cell values across one or all columns.
     Useful for converting non-standard nulls like 'N/A', '?', '-' to NaN.
     """
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
 
     cols = ([body.column] if body.column and body.column in df.columns
@@ -616,8 +632,9 @@ def find_replace(session_id: str, body: FindReplaceBody):
 
 
 @router.post("/{session_id}/normalize")
-def normalize_column(session_id: str, body: NormalizeBody):
+def normalize_column(session_id: str, body: NormalizeBody, authorization: str = Header(None)):
     """Normalize a numeric column using min-max scaling or z-score standardisation."""
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
     col = body.column
     if col not in df.columns:
@@ -646,8 +663,9 @@ def normalize_column(session_id: str, body: NormalizeBody):
 
 
 @router.post("/{session_id}/extract_date_parts")
-def extract_date_parts(session_id: str, body: ExtractDatePartsBody):
+def extract_date_parts(session_id: str, body: ExtractDatePartsBody, authorization: str = Header(None)):
     """Extract date components (year, month, day, etc.) from a datetime column into new columns."""
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
     col = body.column
     if col not in df.columns:
@@ -685,8 +703,9 @@ def extract_date_parts(session_id: str, body: ExtractDatePartsBody):
 
 
 @router.post("/{session_id}/bin_column")
-def bin_column(session_id: str, body: BinColumnBody):
+def bin_column(session_id: str, body: BinColumnBody, authorization: str = Header(None)):
     """Bin a numeric column into discrete buckets (pd.cut or pd.qcut)."""
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
     col = body.column
     if col not in df.columns:
@@ -714,8 +733,9 @@ def bin_column(session_id: str, body: BinColumnBody):
 
 
 @router.post("/{session_id}/derived_column")
-def derived_column(session_id: str, body: DerivedColumnBody):
+def derived_column(session_id: str, body: DerivedColumnBody, authorization: str = Header(None)):
     """Create a new column from arithmetic or string operations on existing columns."""
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
 
     if body.col_a not in df.columns:
@@ -757,8 +777,9 @@ def derived_column(session_id: str, body: DerivedColumnBody):
 
 
 @router.post("/{session_id}/drop_duplicates_subset")
-def drop_duplicates_subset(session_id: str, body: DropDuplicatesSubsetBody):
+def drop_duplicates_subset(session_id: str, body: DropDuplicatesSubsetBody, authorization: str = Header(None)):
     """Remove duplicates based on a specific subset of columns."""
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
 
     missing = [c for c in body.subset if c not in df.columns]
@@ -778,8 +799,9 @@ def drop_duplicates_subset(session_id: str, body: DropDuplicatesSubsetBody):
 
 
 @router.post("/{session_id}/parse_number")
-def parse_number(session_id: str, body: ParseNumberBody):
+def parse_number(session_id: str, body: ParseNumberBody, authorization: str = Header(None)):
     """Parse formatted numeric strings like '$1,234', '45%', or '(500)' into real numbers."""
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
     col = body.column
     if col not in df.columns:
@@ -809,8 +831,9 @@ def parse_number(session_id: str, body: ParseNumberBody):
 
 
 @router.post("/{session_id}/split_column")
-def split_column(session_id: str, body: SplitColumnBody):
+def split_column(session_id: str, body: SplitColumnBody, authorization: str = Header(None)):
     """Split a column by delimiter into multiple columns."""
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
     
     if body.column not in df.columns:
@@ -853,8 +876,19 @@ def split_column(session_id: str, body: SplitColumnBody):
 
 
 @router.post("/{session_id}/extract_regex")
-def extract_regex(session_id: str, body: ExtractRegexBody):
+def extract_regex(session_id: str, body: ExtractRegexBody, authorization: str = Header(None)):
     """Extract patterns using regex (supports capture groups)."""
+    user = get_current_user(authorization)
+
+    # Pro-only: writing a regex pattern is a real technical skill barrier,
+    # not a "make my data usable" step every free user needs — same
+    # reasoning as groupby/custom_formula above.
+    if get_user_plan(user["id"]) != "pro":
+        raise HTTPException(
+            status_code=403,
+            detail="Extract via Regex is available on the Pro plan. Upgrade to unlock regex-based extraction.",
+        )
+
     df = _get_or_init(session_id).copy()
     
     if body.column not in df.columns:
@@ -894,8 +928,9 @@ def extract_regex(session_id: str, body: ExtractRegexBody):
 
 
 @router.post("/{session_id}/create_flag")
-def create_flag(session_id: str, body: CreateFlagBody):
+def create_flag(session_id: str, body: CreateFlagBody, authorization: str = Header(None)):
     """Create a binary flag column (0/1) based on a condition."""
+    user = get_current_user(authorization)
     df = _get_or_init(session_id).copy()
     
     if body.column not in df.columns:
@@ -927,6 +962,8 @@ def create_flag(session_id: str, body: CreateFlagBody):
             else:
                 raise HTTPException(400, f"Unknown operator: {body.operator}")
             df[new_name] = mask.astype(int)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(422, f"Flag creation failed: {str(e)}")
 
@@ -935,8 +972,21 @@ def create_flag(session_id: str, body: CreateFlagBody):
 
 
 @router.post("/{session_id}/groupby")
-def groupby_aggregate(session_id: str, body: GroupByBody):
+def groupby_aggregate(session_id: str, body: GroupByBody, authorization: str = Header(None)):
     """Group by one or more columns and aggregate another."""
+    user = get_current_user(authorization)
+
+    # Pro-only: this is a power-user transform (someone who already trusts
+    # the tool reaching for grouped aggregation), not part of the basic
+    # "make my data usable" cleaning flow every free user needs. Gating it
+    # doubles as informal cost protection too — groupby/agg scales worse on
+    # large frames than the basic cleaning ops.
+    if get_user_plan(user["id"]) != "pro":
+        raise HTTPException(
+            status_code=403,
+            detail="GroupBy + Aggregate is available on the Pro plan. Upgrade to unlock grouped aggregations.",
+        )
+
     df = _get_or_init(session_id).copy()
 
     missing = [c for c in body.group_by if c not in df.columns]
@@ -1014,8 +1064,19 @@ def _validate_formula(formula: str) -> None:
 
 
 @router.post("/{session_id}/custom_formula")
-def custom_formula(session_id: str, body: CustomFormulaBody):
+def custom_formula(session_id: str, body: CustomFormulaBody, authorization: str = Header(None)):
     """Create column using pandas eval, restricted to a whitelisted expression grammar."""
+    user = get_current_user(authorization)
+
+    # Pro-only — same reasoning as groupby above: a power-user transform,
+    # not a basic-cleaning one, and one of the more compute-costly endpoints
+    # in this file (df.eval over the whole column).
+    if get_user_plan(user["id"]) != "pro":
+        raise HTTPException(
+            status_code=403,
+            detail="Custom Formula is available on the Pro plan. Upgrade to unlock building your own column expressions.",
+        )
+
     df = _get_or_init(session_id).copy()
     
     if not body.new_col_name or not body.new_col_name.strip():
@@ -1041,7 +1102,8 @@ def custom_formula(session_id: str, body: CustomFormulaBody):
 # ── undo / promote / export ───────────────────────────────────────────────────
 
 @router.post("/{session_id}/undo")
-def undo(session_id: str):
+def undo(session_id: str, authorization: str = Header(None)):
+    user = get_current_user(authorization)
     if session_id not in CLEAN_STORE:
         raise HTTPException(status_code=404, detail="Session not found.")
     entry = CLEAN_STORE[session_id]
@@ -1056,12 +1118,13 @@ def undo(session_id: str):
 
 
 @router.post("/{session_id}/promote")
-def promote_to_active(session_id: str):
+def promote_to_active(session_id: str, authorization: str = Header(None)):
     """
     Promote the cleaned DataFrame as a brand-new session and
     completely remove the original uncleaned session.
     This prevents duplicate files in the upload list.
     """
+    user = get_current_user(authorization)
     from routers.upload import DATA_CACHE, create_session
 
     df = _get_or_init(session_id)
@@ -1115,7 +1178,8 @@ def promote_to_active(session_id: str):
 
 
 @router.get("/{session_id}/export")
-def export_csv(session_id: str):
+def export_csv(session_id: str, authorization: str = Header(None)):
+    user = get_current_user(authorization)
     df = _get_or_init(session_id)
     buf = io.StringIO()
     df.to_csv(buf, index=False)

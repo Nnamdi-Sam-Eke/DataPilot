@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useDataPilot, API_BASE } from "../DataPilotContext.jsx";
 import { Icons } from "../shared/icons.jsx";
 import { ExpandableCard, ExpandButton, useExpandable } from "../shared/Expandable.jsx";
+import ProGate from "./ProGate.jsx";
 
 // ── Promote button attention animation ───────────────────────────────────────
 const PROMOTE_STYLE_ID = "promote-btn-keyframes";
@@ -266,7 +267,18 @@ export default function PageCleaning({ setPage }) {
     cleanPreview,        setCleanPreview,
     cleanPromoted,       setCleanPromoted,
     activeSessionExpired,
+    user, userProfile,
   } = useDataPilot();
+
+  const isPro = (userProfile?.plan || "free").toLowerCase() === "pro";
+
+  // The backend now requires a verified Firebase auth token on every
+  // /clean/* route (previously unauthenticated) — this helper attaches it
+  // the same way PageUpload/PageTrain/PageInsights already do.
+  const authHeaders = async () => {
+    if (!user) return {};
+    return { Authorization: `Bearer ${await user.getIdToken()}` };
+  };
 
   // ── transient UI state ───────────────────────────────────────────────────
   const [activeTab,   setActiveTab]   = useState("missing");
@@ -276,6 +288,10 @@ export default function PageCleaning({ setPage }) {
   const previewExpand = useExpandable();
   const [downloading, setDownloading] = useState(false);
   const [promoting,   setPromoting]   = useState(false);
+  // Set when a Pro-gated op (groupby / custom_formula) hits a 403, so the
+  // UI can show an upgrade prompt right at that section instead of a
+  // generic error banner. Holds the op's display label, or "" when clear.
+  const [proGateFeature, setProGateFeature] = useState("");
 
   // ── Outliers tab state ────────────────────────────────────────────────────
   const [outlierCfg, setOutlierCfg] = useState({});
@@ -454,7 +470,7 @@ export default function PageCleaning({ setPage }) {
 
   const refreshSummary = async (sid) => {
     try {
-      const r = await fetch(`${API_BASE}/clean/${sid}/summary`);
+      const r = await fetch(`${API_BASE}/clean/${sid}/summary`, { headers: await authHeaders() });
       if (!r.ok) return;
       const d = await r.json();
       setSummary(d.summary);
@@ -476,12 +492,22 @@ export default function PageCleaning({ setPage }) {
   };
 
   const doOp = async (endpoint, body, logEntry) => {
-    setBusy(true); setError(""); setSuccess("");
+    setBusy(true); setError(""); setSuccess(""); setProGateFeature("");
     try {
       const r = await fetch(`${API_BASE}/clean/${sessionId}/${endpoint}`, {
-        method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify(body),
+        method: "POST",
+        headers: { "Content-Type":"application/json", ...(await authHeaders()) },
+        body: JSON.stringify(body),
       });
       const d = await r.json();
+
+      // groupby / custom_formula are Pro-gated server-side — show the
+      // upgrade prompt inline instead of a generic error.
+      if (r.status === 403) {
+        setProGateFeature(logEntry?.type || endpoint);
+        return;
+      }
+
       if (!r.ok) throw new Error(d.detail || "Operation failed");
       setOpLog(prev => [{ ...logEntry, time: now() }, ...prev]);
       setSuccess(d.message || "Done");
@@ -497,7 +523,7 @@ export default function PageCleaning({ setPage }) {
   const handleUndo = async (idx) => {
     setBusy(true); setError("");
     try {
-      const r = await fetch(`${API_BASE}/clean/${sessionId}/undo`, { method:"POST" });
+      const r = await fetch(`${API_BASE}/clean/${sessionId}/undo`, { method:"POST", headers: await authHeaders() });
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail || "Undo failed");
       setOpLog(prev => prev.filter((_, i) => i !== idx));
@@ -509,7 +535,7 @@ export default function PageCleaning({ setPage }) {
   const handlePromote = async () => {
     setPromoting(true); setError("");
     try {
-      const r = await fetch(`${API_BASE}/clean/${sessionId}/promote`, { method:"POST" });
+      const r = await fetch(`${API_BASE}/clean/${sessionId}/promote`, { method:"POST", headers: await authHeaders() });
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail || "Promote failed");
       await promoteCleanedSession(sessionId, d);
@@ -525,7 +551,7 @@ export default function PageCleaning({ setPage }) {
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      const r = await fetch(`${API_BASE}/clean/${sessionId}/export`);
+      const r = await fetch(`${API_BASE}/clean/${sessionId}/export`, { headers: await authHeaders() });
       if (!r.ok) throw new Error("Export failed");
       const blob = await r.blob();
       const url = URL.createObjectURL(blob);
@@ -1377,58 +1403,7 @@ export default function PageCleaning({ setPage }) {
                     </button>
                   </div>
 
-                  {/* ── Regex Extract ── */}
-                  <SectionHead label="Regex Extract" />
-                  <div style={{ fontSize:11.5, color:"var(--text3)", marginBottom:6 }}>
-                    Extract patterns using regex (e.g. email domain, phone digits). Supports capture groups.
-                  </div>
-                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"flex-start" }}>
-                    <select className="input-field" value={regexCol} onChange={e => setRegexCol(e.target.value)} style={{ flex:1, minWidth:100, ...sel }}>
-                      <option value="">— Column —</option>
-                      {safeColumns.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-
-                    <input 
-                      className="input-field" 
-                      placeholder="Regex pattern (e.g. (\d{3})-(\d{2}))" 
-                      value={regexPattern} 
-                      onChange={e => setRegexPattern(e.target.value)}
-                      style={{ flex:1, minWidth:150, padding:"6px 8px", fontSize:12 }}
-                    />
-
-                    <input 
-                      className="input-field" 
-                      placeholder="New col name (optional)" 
-                      value={regexNewName} 
-                      onChange={e => setRegexNewName(e.target.value)}
-                      style={{ flex:1, minWidth:130, padding:"6px 8px", fontSize:12 }}
-                    />
-
-                    <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"var(--text3)", cursor:"pointer", userSelect:"none", whiteSpace:"nowrap" }}>
-                      <input type="checkbox" checked={regexDropOrig} onChange={e => setRegexDropOrig(e.target.checked)} />
-                      Drop original
-                    </label>
-
-                    <button className="btn-secondary" disabled={busy || !regexCol || !regexPattern}
-                      onClick={() => {
-                        doOp("extract_regex", {
-                          column: regexCol,
-                          pattern: regexPattern,
-                          new_col_name: regexNewName || null,
-                          drop_original: regexDropOrig
-                        }, {
-                          type:"extract_regex",
-                          label:`Extract regex from "${regexCol}"`
-                        });
-                        setRegexNewName("");
-                        setRegexDropOrig(false);
-                      }}
-                      style={{ padding:"6px 12px", fontSize:12 }}>
-                      <IcoFormula /> Extract
-                    </button>
-                  </div>
-
-                  {/* ── Create Flag ── */}
+ {/* ── Create Flag ── */}
                   <SectionHead label="Create Flag / Indicator" />
                   <div style={{ fontSize:11.5, color:"var(--text3)", marginBottom:6 }}>
                     Create a binary flag column (0/1) based on a condition on an existing column.
@@ -1478,12 +1453,87 @@ export default function PageCleaning({ setPage }) {
                     </button>
                   </div>
 
+
+                  {/* ── Regex Extract ── */}
+                  <SectionHead label="Regex Extract" />
+                  <div style={{ fontSize:11.5, color:"var(--text3)", marginBottom:6 }}>
+                    Extract patterns using regex (e.g. email domain, phone digits). Supports capture groups.
+                  </div>
+                  {(!isPro || proGateFeature === "extract_regex") && (
+                    <div style={{ marginBottom:8 }}>
+                      <ProGate
+                        compact
+                        icon="🔍"
+                        feature="Regex Extract is a Pro feature"
+                        description="Pull structured values out of text columns using regex capture groups."
+                        onUpgrade={() => setPage("/settings", { state: { highlightSection: "manage-subscription" } })}
+                      />
+                    </div>
+                  )}
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"flex-start", opacity: isPro ? 1 : 0.55, pointerEvents: isPro ? "auto" : "none" }}>
+                    <select className="input-field" value={regexCol} onChange={e => setRegexCol(e.target.value)} style={{ flex:1, minWidth:100, ...sel }}>
+                      <option value="">— Column —</option>
+                      {safeColumns.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+
+                    <input 
+                      className="input-field" 
+                      placeholder="Regex pattern (e.g. (\d{3})-(\d{2}))" 
+                      value={regexPattern} 
+                      onChange={e => setRegexPattern(e.target.value)}
+                      style={{ flex:1, minWidth:150, padding:"6px 8px", fontSize:12 }}
+                    />
+
+                    <input 
+                      className="input-field" 
+                      placeholder="New col name (optional)" 
+                      value={regexNewName} 
+                      onChange={e => setRegexNewName(e.target.value)}
+                      style={{ flex:1, minWidth:130, padding:"6px 8px", fontSize:12 }}
+                    />
+
+                    <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, color:"var(--text3)", cursor:"pointer", userSelect:"none", whiteSpace:"nowrap" }}>
+                      <input type="checkbox" checked={regexDropOrig} onChange={e => setRegexDropOrig(e.target.checked)} />
+                      Drop original
+                    </label>
+
+                    <button className="btn-secondary" disabled={busy || !regexCol || !regexPattern}
+                      onClick={() => {
+                        doOp("extract_regex", {
+                          column: regexCol,
+                          pattern: regexPattern,
+                          new_col_name: regexNewName || null,
+                          drop_original: regexDropOrig
+                        }, {
+                          type:"extract_regex",
+                          label:`Extract regex from "${regexCol}"`
+                        });
+                        setRegexNewName("");
+                        setRegexDropOrig(false);
+                      }}
+                      style={{ padding:"6px 12px", fontSize:12 }}>
+                      <IcoFormula /> Extract
+                    </button>
+                  </div>
+
+
                   {/* ── GroupBy + Aggregate ── */}
                   <SectionHead label="GroupBy + Aggregate" />
                   <div style={{ fontSize:11.5, color:"var(--text3)", marginBottom:6 }}>
                     Group by columns and aggregate values (e.g. average price per product).
                   </div>
-                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"flex-start" }}>
+                  {(!isPro || proGateFeature === "groupby") && (
+                    <div style={{ marginBottom:8 }}>
+                      <ProGate
+                        compact
+                        icon="🔢"
+                        feature="GroupBy + Aggregate is a Pro feature"
+                        description="Group your data and compute aggregates like average or sum per category."
+                        onUpgrade={() => setPage("/settings", { state: { highlightSection: "manage-subscription" } })}
+                      />
+                    </div>
+                  )}
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"flex-start", opacity: isPro ? 1 : 0.55, pointerEvents: isPro ? "auto" : "none" }}>
                     <div style={{ display:"flex", flexWrap:"wrap", gap:5, flex:1, minWidth:120 }}>
                       {safeColumns.map(col => (
                         <label key={col} style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 8px", background:groupByCols.includes(col) ? "var(--accent-dim)" : "var(--bg3)", border:`1px solid ${groupByCols.includes(col) ? "rgba(108,99,255,0.4)" : "var(--border)"}`, borderRadius:6, cursor:"pointer", fontSize:10.5, color:groupByCols.includes(col) ? "var(--accent2)" : "var(--text3)", userSelect:"none" }}>
@@ -1534,7 +1584,18 @@ export default function PageCleaning({ setPage }) {
                   <div style={{ fontSize:11.5, color:"var(--text3)", marginBottom:6 }}>
                     Create a new column using a pandas expression (e.g. <code style={{ fontFamily:"'DM Mono',monospace", background:"var(--bg3)", padding:"1px 4px", borderRadius:3 }}>col1 + col2</code>, <code style={{ fontFamily:"'DM Mono',monospace", background:"var(--bg3)", padding:"1px 4px", borderRadius:3 }}>log(col1)</code>, <code style={{ fontFamily:"'DM Mono',monospace", background:"var(--bg3)", padding:"1px 4px", borderRadius:3 }}>col1 {'>'}  100</code>).
                   </div>
-                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
+                  {(!isPro || proGateFeature === "custom_formula") && (
+                    <div style={{ marginBottom:8 }}>
+                      <ProGate
+                        compact
+                        icon="🧮"
+                        feature="Custom Formula is a Pro feature"
+                        description="Build your own column expressions using arithmetic, comparisons, and functions like log() or sqrt()."
+                        onUpgrade={() => setPage("/settings", { state: { highlightSection: "manage-subscription" } })}
+                      />
+                    </div>
+                  )}
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", opacity: isPro ? 1 : 0.55, pointerEvents: isPro ? "auto" : "none" }}>
                     <input 
                       className="input-field" 
                       placeholder="New column name" 

@@ -1,6 +1,7 @@
 import os
 import sys
 import uuid
+import hmac
 import logging
 
 from fastapi import APIRouter, Request, HTTPException, Header
@@ -234,7 +235,10 @@ async def flutterwave_webhook(request: Request):
     signature = request.headers.get("verif-hash")
     secret_hash = os.getenv("FLW_SECRET_HASH")
 
-    if not signature or signature != secret_hash:
+    # Constant-time comparison — a plain `!=` short-circuits on the first
+    # mismatched byte, which is a timing side-channel in theory. hmac.compare_digest
+    # takes the same time regardless of where (or whether) the strings diverge.
+    if not signature or not secret_hash or not hmac.compare_digest(signature, secret_hash):
         raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
     payload = await request.json()
