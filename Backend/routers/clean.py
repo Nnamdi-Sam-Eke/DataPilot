@@ -402,10 +402,23 @@ def cast_column(session_id: str, body: CastColumnBody, authorization: str = Head
     if body.column not in df.columns:
         raise HTTPException(status_code=400, detail=f"Column '{body.column}' not found.")
 
+    # Checked before the try block on purpose — an unknown dtype is a client
+    # error (400) we raise ourselves, not a cast failure (422) we caught from
+    # pandas. Keeping it inside the try previously meant this HTTPException
+    # got re-caught by `except Exception` below and re-wrapped as a
+    # confusing "422: Cast failed: 400: Unknown dtype: ..." response.
+    if body.dtype not in ("int", "float", "str", "datetime", "bool"):
+        raise HTTPException(status_code=400, detail=f"Unknown dtype: {body.dtype}")
+
     col = df[body.column]
     try:
         if body.dtype == "int":
-            df[body.column] = pd.to_numeric(col, errors="coerce").astype("Int64")
+            # .round() first — casting a column with real decimal values
+            # (7.2) straight to Int64 previously raised "cannot safely cast
+            # non-equivalent object to int64" on every attempt, since pandas
+            # requires the values already be whole numbers. Rounding is the
+            # behavior a user asking to cast to int actually wants.
+            df[body.column] = pd.to_numeric(col, errors="coerce").round().astype("Int64")
         elif body.dtype == "float":
             df[body.column] = pd.to_numeric(col, errors="coerce").astype(float)
         elif body.dtype == "str":
@@ -414,10 +427,6 @@ def cast_column(session_id: str, body: CastColumnBody, authorization: str = Head
             df[body.column] = pd.to_datetime(col, errors="coerce")
         elif body.dtype == "bool":
             df[body.column] = col.map(lambda x: str(x).strip().lower() in ("true","1","yes","y"))
-        else:
-            raise HTTPException(status_code=400, detail=f"Unknown dtype: {body.dtype}")
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Cast failed: {str(e)}")
 
@@ -620,10 +629,27 @@ def find_replace(session_id: str, body: FindReplaceBody, authorization: str = He
                 raise HTTPException(422, f"Regex error on '{c}': {e}")
         else:
             exact = df[c].astype(str) == str(find_val)
-            total += int(exact.sum())
+            n = int(exact.sum())
+            total += n
+            # Skip entirely when nothing matched — no reason to touch the
+            # column's dtype for a no-op, and it avoids the crash below on
+            # every unrelated numeric column when replacing across "all
+            # columns" (see comment further down).
+            if n == 0:
+                continue
             if repl_val.lower() in NULL_SENTINELS:
                 df.loc[exact, c] = np.nan
             else:
+                # Widen to object dtype first when needed. pandas raises
+                # ("Invalid value '...' for dtype 'int64'") when a scalar
+                # string can't be held by the column's current dtype — this
+                # previously crashed the whole request the instant a
+                # non-numeric replacement value reached any numeric column,
+                # even ones with zero actual matches (n==0, guarded above)
+                # and even genuine matches (e.g. replacing a numeric cell's
+                # text representation with a non-numeric string).
+                if not (pd.api.types.is_object_dtype(df[c]) or pd.api.types.is_string_dtype(df[c])):
+                    df[c] = df[c].astype(object)
                 df.loc[exact, c] = repl_val
 
     scope = f"'{body.column}'" if body.column and body.column in df.columns else "all columns"
@@ -901,8 +927,11 @@ def extract_regex(session_id: str, body: ExtractRegexBody, authorization: str = 
     except Exception as e:
         raise HTTPException(422, f"Invalid regex pattern: {str(e)}")
 
-    # Auto name or use provided
-    base_name = body.new_col_name.strip() or f"{body.column}_extracted"
+    # Auto name or use provided. The frontend's "new column name" field is
+    # explicitly optional and sends null when left blank — that's the
+    # common path, not an edge case — so this must tolerate None rather
+    # than assume a string.
+    base_name = (body.new_col_name or "").strip() or f"{body.column}_extracted"
     
     if extracted.shape[1] == 1:
         df[base_name] = extracted.iloc[:, 0]
@@ -962,8 +991,6 @@ def create_flag(session_id: str, body: CreateFlagBody, authorization: str = Head
             else:
                 raise HTTPException(400, f"Unknown operator: {body.operator}")
             df[new_name] = mask.astype(int)
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(422, f"Flag creation failed: {str(e)}")
 

@@ -30,7 +30,7 @@ import Sidebar      from "./components/Sidebar.jsx";
 import Topbar       from "./components/Topbar.jsx";
 import PageAuth     from "./pages/PageAuth.jsx";
 import PageOnboarding   from "./pages/PageOnboarding.jsx";
-import PageBetaProfile  from "./pages/PageBetaProfile.jsx";
+import PageProfileSetup  from "./pages/PageProfileSetup.jsx";
 import PageDashboard    from "./pages/PageDashboard.jsx";
 import PageUpload       from "./pages/PageUpload.jsx";
 import PageOverview     from "./pages/PageOverview.jsx";
@@ -439,7 +439,7 @@ function AppShell() {
           <div className="main-area">
             <Topbar page="dashboard" onMenuClick={() => setSidebarOpen((o) => !o)} />
             <main className="page-content">
-              <PageBetaProfile
+              <PageProfileSetup
                 saving={betaSaving}
                 onContinue={async (payload) => { await markBetaProfileSeen(payload); }}
                 onSkip={async () => { await markBetaProfileSeen({}); }}

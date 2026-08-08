@@ -2,7 +2,7 @@
 Page Rating: 8.5/10
 Notes: Well-structured option cards with active-state glow.
 TODOs:
- - Add a progress bar across the two-page beta flow.
+ - Add a progress bar across the two-page onboarding flow.
 */
 import { useMemo, useState } from "react";
 import { Icons } from "../shared/icons.jsx";
@@ -131,7 +131,7 @@ const ROLES = [
   { value: "student", label: "Student", sub: "Learn analysis, modeling, and workflows faster.", icon: Icons.file },
   { value: "founder", label: "Founder / Operator", sub: "Make business decisions from raw data quickly.", icon: Icons.cpu },
   { value: "developer", label: "Developer", sub: "Analyze, prototype, and export reproducible code.", icon: Icons.upload },
-  { value: "other", label: "Other", sub: "Something else — still welcome in the beta.", icon: Icons.wand },
+  { value: "other", label: "Other", sub: "Something else — glad to have you here.", icon: Icons.wand },
 ];
 
 const LEVELS = [
@@ -149,7 +149,7 @@ const USE_CASES = [
   { value: "learning", label: "Learning / practice" },
 ];
 
-export default function PageBetaProfile({ onContinue, onSkip, saving = false }) {
+export default function PageProfileSetup({ onContinue, onSkip, saving = false }) {
   const { userProfile } = useDataPilot();
 
   const firstName = useMemo(() => {
@@ -238,7 +238,7 @@ export default function PageBetaProfile({ onContinue, onSkip, saving = false }) 
               }}
             >
               <span style={{ fontSize: 8 }}>✦</span>
-              Beta profile
+              Quick setup
             </span>
           </div>
 
@@ -275,7 +275,7 @@ export default function PageBetaProfile({ onContinue, onSkip, saving = false }) 
                     color: "var(--text)",
                   }}
                 >
-                  {firstName ? <>Welcome, {firstName}.<br />Let’s tailor your beta.</> : <>Let’s tailor your<br />beta access.</>}
+                  {firstName ? <>Welcome, {firstName}.<br />Let’s tailor DataPilot for you.</> : <>Let’s tailor<br />DataPilot for you.</>}
                 </h1>
                 <p
                   style={{
@@ -286,8 +286,8 @@ export default function PageBetaProfile({ onContinue, onSkip, saving = false }) 
                     maxWidth: 620,
                   }}
                 >
-                  You’re part of the early <strong style={{ color: "var(--text)" }}>DataPilot Beta</strong>.
-                  This quick setup helps us understand who’s using the product and what matters most.
+                  A few quick questions help us tailor <strong style={{ color: "var(--text)" }}>DataPilot</strong> to
+                  how you work, and understand what matters most to you.
                 </p>
               </div>
 
@@ -503,7 +503,7 @@ export default function PageBetaProfile({ onContinue, onSkip, saving = false }) 
                   Why we ask this
                 </div>
                 <div style={{ fontSize: 11.5, color: "var(--text3)", marginTop: 4, lineHeight: 1.7 }}>
-                  We’re shaping DataPilot with real beta feedback. This helps us understand who is using the
+                  We’re shaping DataPilot with real user feedback. This helps us understand who is using the
                   product and what workflows matter most.
                 </div>
               </div>
@@ -514,7 +514,7 @@ export default function PageBetaProfile({ onContinue, onSkip, saving = false }) 
                   text: "We can prioritize the right workflows, features, and polish for real users.",
                 },
                 {
-                  title: "Smarter beta support",
+                  title: "Smarter support",
                   text: "We’ll know whether you’re using DataPilot for learning, business analysis, reporting, or modeling.",
                 },
                 {
@@ -557,7 +557,7 @@ export default function PageBetaProfile({ onContinue, onSkip, saving = false }) 
                   lineHeight: 1.7,
                 }}
               >
-                <strong style={{ color: "var(--text)" }}>You’re part of the early beta.</strong> Your feedback directly shapes what DataPilot becomes next.
+                <strong style={{ color: "var(--text)" }}>Welcome aboard.</strong> Your feedback directly shapes what DataPilot becomes next.
               </div>
             </div>
           </div>

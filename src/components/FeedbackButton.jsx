@@ -212,7 +212,7 @@ export default function FeedbackButton() {
                   fontFamily: "'DM Mono', monospace",
                   marginTop:  1,
                 }}>
-                  beta · datapilot
+                  datapilot
                 </div>
               </div>
             </div>
