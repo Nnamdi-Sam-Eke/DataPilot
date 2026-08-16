@@ -19,8 +19,9 @@ import copy
 import logging
 import ast
 
-from utils.auth import get_current_user, get_user_plan
 
+from utils.auth import get_current_user, get_user_plan
+from utils.data_quality import compute_outlier_bounds
 router = APIRouter(prefix="/clean", tags=["clean"])
 
 logger = logging.getLogger(__name__)
@@ -483,6 +484,13 @@ def encode_column(session_id: str, body: EncodeColumnBody, authorization: str = 
 
 # ── NEW endpoints ─────────────────────────────────────────────────────────────
 
+# ── Updated cap_outliers for routers/clean.py ────────────────────────────────
+# Requires:  from utils.data_quality import compute_outlier_bounds
+#
+# Drop this function in place of the existing one. Auth, snapshot, clip/remove,
+# and response shape are unchanged — only the bounds math now comes from the
+# shared helper so insights.py sees identical numbers.
+
 @router.post("/{session_id}/cap_outliers")
 def cap_outliers(session_id: str, body: CapOutliersBody, authorization: str = Header(None)):
     """Detect and cap or remove outliers using IQR or z-score method."""
@@ -498,19 +506,17 @@ def cap_outliers(session_id: str, body: CapOutliersBody, authorization: str = He
     if len(s) < 4:
         raise HTTPException(400, f"Not enough non-null values in '{col}' to detect outliers.")
 
-    if body.method == "iqr":
-        q1, q3 = s.quantile(0.25), s.quantile(0.75)
-        iqr = q3 - q1
-        lower = q1 - body.threshold * iqr
-        upper = q3 + body.threshold * iqr
-    elif body.method == "zscore":
-        mean, std = s.mean(), s.std()
-        if std == 0:
-            raise HTTPException(400, f"Column '{col}' has zero variance; cannot compute z-scores.")
-        lower = mean - body.threshold * std
-        upper = mean + body.threshold * std
-    else:
+    if body.method not in ("iqr", "zscore"):
         raise HTTPException(400, f"Unknown method: {body.method}")
+
+    # Shared math — same function insights.py uses for data_quality.outliers
+    bounds = compute_outlier_bounds(s, method=body.method, threshold=body.threshold)
+    if bounds is None:
+        if body.method == "zscore":
+            raise HTTPException(400, f"Column '{col}' has zero variance; cannot compute z-scores.")
+        raise HTTPException(400, f"Not enough non-null values in '{col}' to detect outliers.")
+
+    lower, upper = bounds["lower"], bounds["upper"]
 
     mask = (df[col] < lower) | (df[col] > upper)
     n_outliers = int(mask.sum())
@@ -532,6 +538,7 @@ def cap_outliers(session_id: str, body: CapOutliersBody, authorization: str = He
 
     _save_snapshot(session_id, df)
     return {"message": msg, "affected_rows": n_outliers}
+
 
 
 @router.post("/{session_id}/string_op")

@@ -1,8 +1,9 @@
 from fastapi import APIRouter, UploadFile, Header
 import chardet
+import csv
 import pandas as pd
 import io
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import uuid
 from datetime import datetime, timedelta, timezone
 import math
@@ -53,32 +54,102 @@ def detect_encoding(content: bytes) -> str:
     result = chardet.detect(content)
     return result.get("encoding") or "utf-8"
 
-def read_csv_safely(buffer: io.BytesIO) -> pd.DataFrame:
+# Bytes of the file sampled for delimiter sniffing — cheap and plenty for
+# csv.Sniffer to see the pattern, even on a multi-hundred-MB file. Sampling
+# (rather than decoding the whole file just to sniff) matters because this
+# runs before the row/size caps below have had a chance to reject anything.
+_SNIFF_SAMPLE_BYTES = 8192
+
+def sniff_delimiter(sample_text: str, forced: Optional[str] = None) -> str:
+    """
+    Detect the field delimiter in a text sample. `forced`, when given (e.g.
+    "\\t" for a .tsv upload), skips detection entirely — an explicit
+    extension is a stronger signal than a guess. Falls back to comma on
+    anything Sniffer can't confidently read (single-column files, very
+    short samples, etc) rather than raising, since comma is the safest
+    default for CSV-shaped data.
+    """
+    if forced:
+        return forced
+    try:
+        dialect = csv.Sniffer().sniff(sample_text, delimiters=",;\t|")
+        return dialect.delimiter
+    except csv.Error:
+        return ","
+
+def read_delimited_safely(buffer: io.BytesIO, forced_sep: Optional[str] = None) -> pd.DataFrame:
+    """
+    Read any single-character-delimited text file (CSV, semicolon-delimited
+    exports common in EU locales, pipe-delimited, TSV) with both encoding
+    AND delimiter auto-detected from the actual bytes, instead of assuming
+    UTF-8 + comma. `forced_sep` lets a caller that already knows the
+    delimiter (e.g. a .tsv extension) skip sniffing.
+    """
     buffer.seek(0)
     content = buffer.read()
     encoding = detect_encoding(content)
+    sample = content[:_SNIFF_SAMPLE_BYTES].decode(encoding, errors="replace")
+    sep = sniff_delimiter(sample, forced=forced_sep)
     buffer.seek(0)
-    return pd.read_csv(buffer, encoding=encoding)
+    return pd.read_csv(buffer, encoding=encoding, sep=sep)
+
+def read_csv_safely(buffer: io.BytesIO) -> pd.DataFrame:
+    """Back-compat name — CSV/plain-text with delimiter auto-detected."""
+    return read_delimited_safely(buffer)
+
+def read_tsv_safely(buffer: io.BytesIO) -> pd.DataFrame:
+    """Tab-delimited — the extension already tells us the delimiter."""
+    return read_delimited_safely(buffer, forced_sep="\t")
+
+def read_parquet_safely(buffer: io.BytesIO) -> pd.DataFrame:
+    """
+    Parquet is binary and self-describing (columnar, typed) — no encoding
+    or delimiter guessing needed. Uses pyarrow, which is already a project
+    dependency (clean.py's undo-snapshot mechanism relies on it), so this
+    adds no new install footprint.
+    """
+    buffer.seek(0)
+    return pd.read_parquet(buffer)
 
 READERS = {
     "text/csv":   read_csv_safely,
     "text/plain": read_csv_safely,
+    "text/tab-separated-values": read_tsv_safely,
     "application/vnd.ms-excel": pd.read_excel,
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": pd.read_excel,
     "application/json": pd.read_json,
+    # NOTE: deliberately NOT mapping "application/octet-stream" here — it's
+    # the generic fallback MIME browsers send for all sorts of files
+    # (CSV/TSV via drag-and-drop, Parquet always, since it has no standard
+    # browser MIME). Mapping it to any one reader would hijack every other
+    # octet-stream upload. Leaving it unmapped means it falls through to
+    # the extension-based lookup below, which is the correct, unambiguous
+    # signal for it — this is exactly how Parquet already gets resolved.
+    "application/vnd.apache.parquet": read_parquet_safely,  # unofficial but occasionally sent
+    "application/x-parquet": read_parquet_safely,
 }
 
 # Extension-based fallback for browsers that send application/octet-stream
+# (the norm for Parquet, and common for CSV/TSV/XLSX from some browsers,
+# Postman, or drag-and-drop). Checked whenever the MIME lookup above misses
+# OR maps to a MIME that's still ambiguous (octet-stream) — see process_file.
 _EXT_READERS = {
-    "csv":  read_csv_safely,
-    "xlsx": pd.read_excel,
-    "xls":  pd.read_excel,
-    "json": pd.read_json,
+    "csv":     read_csv_safely,
+    "tsv":     read_tsv_safely,
+    "txt":     read_csv_safely,   # delimiter-sniffed the same as .csv
+    "xlsx":    pd.read_excel,
+    "xls":     pd.read_excel,
+    "json":    pd.read_json,
+    "parquet": read_parquet_safely,
+    "pq":      read_parquet_safely,
 }
 
-# File types gated to Pro only
-_PRO_ONLY_TYPES = {"json"}
-_PRO_ONLY_MIMES = {"application/json"}
+# File types gated to Pro only. Parquet joins JSON here as a more
+# specialized/data-engineering format, same tier logic already applied to
+# JSON — plain-delimited formats (CSV/TSV/TXT) and Excel stay free since
+# they're the common case, not a power-user feature.
+_PRO_ONLY_TYPES = {"json", "parquet", "pq"}
+_PRO_ONLY_MIMES = {"application/json", "application/vnd.apache.parquet", "application/x-parquet"}
 
 def create_session(df: pd.DataFrame, plan: str = "free", file_name: str = None) -> str:
     """Create a new session."""
@@ -231,15 +302,16 @@ async def process_file(file: UploadFile, plan: str = "free", uid: str | None = N
     if reader is None:
         return sanitize_for_json({
             "file_name": file.filename,
-            "error": f"Unsupported file type: {file.content_type}. Supported: CSV, XLSX" + (", JSON." if is_pro else "."),
+            "error": f"Unsupported file type: {file.content_type}. Supported: CSV, TSV, XLSX" + (", JSON, Parquet." if is_pro else ". Upgrade to Pro for JSON and Parquet."),
         })
 
-    # Gate JSON uploads to Pro only
+    # Gate JSON/Parquet uploads to Pro only
     ext_check = (file.filename or "").rsplit(".", 1)[-1].lower()
     if (file.content_type in _PRO_ONLY_MIMES or ext_check in _PRO_ONLY_TYPES) and not is_pro:
+        format_label = "Parquet" if ext_check in {"parquet", "pq"} else "JSON"
         return sanitize_for_json({
             "file_name": file.filename,
-            "error": "JSON uploads are available on the Pro plan. Please upgrade to upload JSON files.",
+            "error": f"{format_label} uploads are available on the Pro plan. Please upgrade to upload {format_label} files.",
             "plan_gate": "pro",
         })
 

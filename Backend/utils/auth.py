@@ -56,7 +56,8 @@ def get_current_user(authorization: str = Header(None)) -> dict:
     id_token = authorization.split("Bearer ", 1)[1]
     try:
         decoded = firebase_auth.verify_id_token(id_token)
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Token verification failed: {e}")
         raise HTTPException(status_code=401, detail="Invalid or expired auth token")
 
     return {"id": decoded["uid"], "email": decoded.get("email", "")}

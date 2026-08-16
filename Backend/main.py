@@ -27,6 +27,15 @@ try:
 except ImportError:
     _has_train = False
 
+try:
+    from routers import forecast
+    _has_forecast = True
+except ImportError:
+    # statsmodels missing from the environment — same optional-dependency
+    # pattern as train/predict/report above (xgboost). Forecasting degrades
+    # gracefully rather than crashing the whole app.
+    _has_forecast = False
+
 from routers import payments
 
 # ================= LOGGING =================
@@ -482,3 +491,6 @@ if _has_train:
     app.include_router(train.router,   prefix="/train",   tags=["Train"])
     app.include_router(predict.router, prefix="/predict", tags=["Predict"])
     app.include_router(report.router,  prefix="/report",  tags=["Report"])
+
+if _has_forecast:
+    app.include_router(forecast.router, prefix="/forecast", tags=["Forecast"])

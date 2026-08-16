@@ -40,6 +40,8 @@ export default function PageUpload({ setPage }) {
     setTotalRowsProcessed,
   } = useDataPilot();
 
+  const isPro = (userProfile?.plan || "free").toLowerCase() === "pro";
+
   // ── Project Context Handling ─────────────────────────────────────
   // Capture the project context ONCE on mount using a ref so that
   // subsequent re-renders (e.g. after upload) don't re-read stale or
@@ -388,7 +390,7 @@ if (user?.uid) {
       <div className="page-header">
   <div className="page-title">Upload Dataset</div>
   <div className="page-subtitle">
-    Upload one or more CSV, XLSX or JSON files. Switch between them anytime.
+    Upload one or more CSV, TSV or XLSX{isPro ? ", JSON or Parquet" : ""} files. Switch between them anytime.
     {currentProjectName && (
       <span style={{ marginLeft: 8, color: "var(--accent2)" }}>
         · Project: {currentProjectName}
@@ -436,7 +438,7 @@ if (user?.uid) {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv,.xlsx,.xls,.json"
+              accept=".csv,.tsv,.txt,.xlsx,.xls,.json,.parquet,.pq"
               multiple
               style={{ display: "none" }}
               onChange={(e) => handleFiles(e.target.files)}
@@ -825,33 +827,42 @@ if (user?.uid) {
           <div className="card">
             <div className="card-title">Supported Formats</div>
             {[
-              { ext: ".CSV", desc: "Comma-separated values", color: "var(--green)" },
-              { ext: ".XLSX", desc: "Excel spreadsheet", color: "var(--cyan)" },
-              { ext: ".JSON", desc: "JavaScript Object Notation", color: "var(--amber)" },
-            ].map((f, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  alignItems: "center",
-                  padding: "8px 0",
-                  borderBottom: i < 2 ? "1px solid var(--border)" : "none",
-                }}
-              >
-                <span
-                  className="tag"
+              { ext: ".CSV",     desc: "Comma-separated values (delimiter auto-detected — also handles ; and | separated exports)", color: "var(--green)", pro: false },
+              { ext: ".TSV",     desc: "Tab-separated values", color: "var(--green)", pro: false },
+              { ext: ".XLSX",    desc: "Excel spreadsheet", color: "var(--cyan)", pro: false },
+              { ext: ".JSON",    desc: "JavaScript Object Notation", color: "var(--amber)", pro: true },
+              { ext: ".PARQUET", desc: "Columnar format for large/analytics datasets", color: "var(--amber)", pro: true },
+            ].map((f, i, arr) => {
+              const locked = f.pro && !isPro;
+              return (
+                <div
+                  key={i}
                   style={{
-                    background: `${f.color}12`,
-                    color: f.color,
-                    border: `1px solid ${f.color}25`,
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "center",
+                    padding: "8px 0",
+                    borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none",
+                    opacity: locked ? 0.6 : 1,
                   }}
                 >
-                  {f.ext}
-                </span>
-                <span style={{ fontSize: 12, color: "var(--text2)" }}>{f.desc}</span>
-              </div>
-            ))}
+                  <span
+                    className="tag"
+                    style={{
+                      background: `${f.color}12`,
+                      color: f.color,
+                      border: `1px solid ${f.color}25`,
+                    }}
+                  >
+                    {f.ext}
+                  </span>
+                  <span style={{ fontSize: 12, color: "var(--text2)", flex: 1 }}>{f.desc}</span>
+                  {f.pro && (
+                    <span style={{ fontSize: 9, fontWeight: 700, color: "var(--accent2)", background: "var(--accent-dim)", border: "1px solid rgba(108,99,255,0.3)", borderRadius: 4, padding: "1px 5px", letterSpacing: "0.04em" }}>PRO</span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

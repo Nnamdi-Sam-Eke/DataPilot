@@ -398,6 +398,39 @@ export function DataPilotProvider({ children }) {
     sessions, activeIdx, activeWorkspace, userProfile, projects, groqKey,
   ]);
 
+  // ── Defensive reconciliation: keep sessionId/columns/summary in sync
+  // with sessions[activeIdx] ────────────────────────────────────────────
+  // Overview/Cleaning/Insights/Train/etc. all gate on the single derived
+  // `sessionId` (not on `sessions`/`activeIdx` directly) to decide whether
+  // to show "No Dataset Loaded". A beta tester (Emmanuel) hit a case after
+  // logging back in where the Dashboard's dataset list showed a dataset as
+  // present and active, but those other pages still said "No Dataset
+  // Loaded" until the dataset was deleted and re-uploaded — meaning
+  // sessionId/columns/summary had fallen out of sync with sessions/activeIdx
+  // and nothing forced them back in sync afterward. The exact restore-order
+  // race behind that wasn't reliably reproducible, so rather than rewrite
+  // the restore flow blind, this adds a narrow self-healing check: whenever
+  // sessions/activeIdx settle, if there's a live active session but
+  // sessionId doesn't match it, resync the derived fields from that session
+  // directly. This only fires on a detected mismatch, so it can correct a
+  // stuck state but can't affect the already-working, in-sync case.
+  useEffect(() => {
+    if (activeIdx === null || activeIdx === undefined) return;
+    const active = sessions[activeIdx];
+    if (!active || active.expired) return;
+    if (active.sessionId === sessionId) return; // already in sync
+
+    console.warn(
+      "[DataPilot] Active session state was out of sync — resyncing.",
+      { expected: active.sessionId, was: sessionId }
+    );
+    setSessionIdRaw(active.sessionId);
+    setColumnsRaw(active.columns || []);
+    setSummaryRaw(active.summary || null);
+    setFileNameRaw(active.fileName || "");
+    setRowCountRaw(active.rowCount || 0);
+  }, [sessions, activeIdx, sessionId]);
+
   // ── Cloud workspace auto-save ─────────────────────────────────────────
   // Derives the active Firestore dataset doc ID — used as the workspace key
   const datasetDocId = activeIdx !== null ? (sessions[activeIdx]?.id || null) : null;

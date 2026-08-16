@@ -270,6 +270,11 @@ export default function PageInsights({ setPage }) {
           text: displayText,
           ts: Date.now(),
           plan_gate: isPlanGate ? "pro" : null,
+          // Present only when the backend actually rendered a chart
+          // (Ask DataPilot chat requesting a real visualization, not just
+          // a text description of one) — undefined otherwise, so existing
+          // messages/responses without a chart render exactly as before.
+          chart: data.chart || undefined,
         },
       ]);
     } catch {
@@ -384,6 +389,18 @@ export default function PageInsights({ setPage }) {
                       <div style={{ whiteSpace: "pre-line" }}>
                         <RichText text={m.text} />
                       </div>
+                      {m.chart?.image && (
+                        <img
+                          src={`data:image/png;base64,${m.chart.image}`}
+                          alt={m.chart.title || `${m.chart.type} chart`}
+                          style={{
+                            marginTop: 10,
+                            maxWidth: "100%",
+                            borderRadius: 8,
+                            border: "1px solid var(--border, rgba(255,255,255,0.08))",
+                          }}
+                        />
+                      )}
                     </div>
                     {m.ts && (
                       <div style={{ fontSize: 9.5, color: "var(--text3)", fontFamily: "'DM Mono', monospace", paddingLeft: 2, paddingRight: 2 }}>
