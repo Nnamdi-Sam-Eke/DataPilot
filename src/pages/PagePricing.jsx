@@ -23,7 +23,7 @@ const FEATURES = [
   {
     category: "Uploads & Files",
     rows: [
-      { label: "File formats",              free: "CSV, XLSX",     pro: "CSV, XLSX, JSON" },
+      { label: "File formats",              free: "CSV, TSV, XLSX", pro: "CSV, TSV, XLSX, JSON, Parquet" },
       { label: "Max file size",             free: "10 MB",         pro: "50 MB" },
       { label: "Max rows per dataset",      free: "20,000",        pro: "500,000" },
     ],
@@ -48,6 +48,15 @@ const FEATURES = [
       { label: "Models per session",        free: "1",             pro: "4" },
       { label: "Model memory (active TTL)",  free: "10 min",        pro: "60 min" },
       { label: "Model download (.pkl)",     free: false,           pro: true },
+    ],
+  },
+  {
+    category: "Forecasting",
+    rows: [
+      { label: "Time-series forecasting (Holt-Winters)", free: false, pro: true },
+      { label: "Automatic seasonality detection",        free: false, pro: true },
+      { label: "Forecast confidence bands",               free: false, pro: true },
+      { label: "Forecast export (CSV/PDF)",                free: false, pro: true },
     ],
   },
   {
@@ -184,7 +193,7 @@ const data = text ? JSON.parse(text) : {};
           fontSize: "clamp(13px, 3vw, 15px)", color: "var(--text3)", maxWidth: 480,
           margin: "0 auto", lineHeight: 1.7, padding: "0 8px",
         }}>
-          Start free with 20K rows and 15 daily AI queries. Upgrade to Pro for advanced models (XGBoost, SVM), larger datasets (500K rows), and extended sessions.
+          Start free with 20K rows and 15 daily AI queries. Upgrade to Pro for advanced models (XGBoost, SVM), time-series forecasting, larger datasets (500K rows), and extended sessions.
         </p>
       </div>
 
@@ -230,7 +239,7 @@ const data = text ? JSON.parse(text) : {};
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
             {[
-              "CSV and XLSX files (10 MB max)",
+              "CSV, TSV, and XLSX files (10 MB max)",
               "Up to 20,000 rows per dataset",
               "Data overview, stats & correlation matrix",
               "15 AI insights queries per day",
@@ -313,18 +322,19 @@ const data = text ? JSON.parse(text) : {};
               <span style={{ fontSize: "clamp(12px, 2vw, 13px)", color: "var(--text3)" }}>/ month</span>
             </div>
             <p style={{ fontSize: "clamp(12px, 2vw, 13px)", color: "var(--text3)", marginTop: 10, lineHeight: 1.6, position: "relative" }}>
-              For analysts and professionals who work with larger files and need more power — including XGBoost, SVM, JSON uploads, and longer sessions.
+              For analysts and professionals who work with larger files and need more power — including XGBoost, SVM, time-series forecasting, JSON/Parquet uploads, and longer sessions.
             </p>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24, position: "relative" }}>
             {[
-              "CSV, XLSX, and JSON files (50 MB max)",
+              "CSV, TSV, XLSX, JSON, and Parquet files (50 MB max)",
               "Up to 500,000 rows per dataset",
               "Everything in Free plan",
               "Unlimited AI insights queries",
               "Compare mode — analyze multiple datasets side by side",
               "XGBoost & SVM algorithms",
+              "Time-series forecasting (Holt-Winters, seasonality detection, confidence bands)",
               "Multiple trained models per session (60 min memory)",
               "Save and download models (.pkl)",
               "Score new files and datasets",

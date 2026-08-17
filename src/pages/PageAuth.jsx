@@ -268,7 +268,8 @@ export default function PageAuth() {
     { icon: "⚡", label: "End-to-end pipeline",    sub: "Upload → Clean → Train → Export",  delay: 0.15 },
     { icon: "✦",  label: "AI-assisted insights",    sub: "Ask anything about your data",     delay: 0.25 },
     { icon: "⌗",  label: "17 chart types",         sub: "From histograms to pair plots",    delay: 0.35 },
-    { icon: "⟨/⟩", label: "Session code export",  sub: "Python · Jupyter · Markdown",      delay: 0.45 },
+    { icon: "📈", label: "Time-series forecasting", sub: "Holt-Winters with seasonality",    delay: 0.45 },
+    { icon: "⟨/⟩", label: "Session code export",  sub: "Python · Jupyter · Markdown",      delay: 0.55 },
   ];
 
   return (
@@ -385,7 +386,7 @@ export default function PageAuth() {
               maxWidth: 430,
               fontFamily: "'DM Sans', sans-serif",
             }}>
-              Upload, clean, visualize, train, predict, and export
+              Upload, clean, visualize, train, forecast, predict, and export
               reproducible code — all without leaving the browser.
             </p>
           </div>
