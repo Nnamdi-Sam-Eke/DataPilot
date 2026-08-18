@@ -939,8 +939,8 @@ footer {
 <section class="why-section">
   <div class="container">
     <div class="section-eyebrow">Why DataPilot</div>
-   <h2 class="section-title">Not Excel. Not Power BI.<br/>A tool built for <em style="font-style:italic;color:var(--accent2)">the solo analyst</em>.</h2>
-   <p class="section-sub" style="max-width:600px;margin-bottom:56px">The tools that exist were built for data teams with engineering support — not for the analyst who works alone, delivers to clients, and doesn't have time to write a single line of code. If you're working alone, moving fast, and shipping without engineering support, DataPilot is built for you.</p>
+   <h2 class="section-title">Not Excel. Not Power BI.<br/>A tool built for <em style="font-style:italic;color:var(--accent2)">the independent analyst</em>.</h2>
+   <p class="section-sub" style="max-width:600px;margin-bottom:56px">The tools that exist were built for data teams with engineering support — not for the analyst who works alone, delivers to clients, and doesn't have time to write a single line of code. Freelance consultant, founder running your own numbers, researcher without a data team, or student on a deadline — if you're working alone, moving fast, and shipping without engineering support, DataPilot is built for you.</p>
    <div class="why-grid">
       <div class="why-col why-col-others">
         <div class="why-col-header">
@@ -1023,7 +1023,7 @@ footer {
         <h2 class="section-title">A complete data<br/>science workspace.</h2>
       </div>
       <div class="section-sub">
-        Every tool you need — from raw file to trained model — in one cohesive platform. Built for analysts who think in business problems, not code.
+        Every tool you need — from raw file to trained model — in one cohesive platform. Built for independent analysts who think in business problems, not code.
       </div>
     </div>
     <div class="features-grid">
@@ -1226,7 +1226,7 @@ footer {
               ✓ AI Chat (15 queries/day)
             </li>
             <li style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);">
-              ✓ 1.5 session window
+              ✓ 90-min sessions
             </li>
           </ul>
 
@@ -1278,10 +1278,11 @@ footer {
 
 
           <ul style="list-style:none;display:flex;flex-direction:column;gap:10px;margin-bottom:22px;">
-            <li style="font-size:13px;color:var(--text2);">✓ Extended AI analysis</li>
-            <li style="font-size:13px;color:var(--text2);">✓ Longer session windows</li>
-            <li style="font-size:13px;color:var(--text2);">✓ Advanced visualizations</li>
-            <li style="font-size:13px;color:var(--text2);">✓ Priority processing</li>
+            <li style="font-size:13px;color:var(--text2);">✓ Unlimited AI chat <span style="color:var(--text3)">(vs. 15/day)</span></li>
+            <li style="font-size:13px;color:var(--text2);">✓ 12-hour sessions <span style="color:var(--text3)">(vs. 90 min)</span></li>
+            <li style="font-size:13px;color:var(--text2);">✓ 500K rows &amp; 50MB files <span style="color:var(--text3)">(vs. 20K / 10MB)</span></li>
+            <li style="font-size:13px;color:var(--text2);">✓ XGBoost, SVM &amp; forecasting</li>
+            <li style="font-size:13px;color:var(--text2);">✓ Full report downloads &amp; Jupyter export</li>
           </ul>
 
 
@@ -1308,6 +1309,26 @@ footer {
 
         </div>
 
+      </div>
+    </div>
+
+    <!-- Feature comparison toggle -->
+    <div style="text-align:center;margin-top:32px;">
+      <button id="pricing-compare-toggle" onclick="toggleCompareTable()"
+        style="display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:10px;border:1px solid rgba(108,99,255,0.3);background:rgba(108,99,255,0.06);color:var(--accent2);font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer;">
+        <span class="label">See full feature comparison</span>
+        <svg class="chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transition:transform 0.2s;"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+    </div>
+
+    <div id="pricing-compare-table" style="max-width:860px;margin:0 auto;background:var(--bg2);border:1px solid var(--border);border-radius:16px;overflow:hidden;max-height:0;opacity:0;transition:max-height 0.4s ease, opacity 0.3s ease, margin-top 0.3s ease;">
+      <div style="max-height:560px;overflow:auto;">
+        <div style="display:grid;grid-template-columns:1fr 90px 90px;padding:14px 20px;background:var(--bg3);border-bottom:1px solid var(--border);position:sticky;top:0;">
+          <div style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.06em;">Feature</div>
+          <div style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.06em;text-align:center;">Free</div>
+          <div style="font-size:11px;color:var(--accent2);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.06em;text-align:center;">Pro</div>
+        </div>
+        <div id="pricing-compare-body"></div>
       </div>
     </div>
   </div>
@@ -1346,6 +1367,96 @@ footer {
 </footer>
 
 <script>
+// Mirrors the tier data in the app's pricing page (PagePricing.jsx) — keep in sync if plans change.
+const PRICING_FEATURES = [
+  { category: "Uploads & Files", rows: [
+    { label: "File formats", free: "CSV, TSV, XLSX", pro: "CSV, TSV, XLSX, JSON, Parquet" },
+    { label: "Max file size", free: "10 MB", pro: "50 MB" },
+    { label: "Max rows per dataset", free: "20,000", pro: "500,000" },
+  ]},
+  { category: "Analysis & Visualization", rows: [
+    { label: "Data overview & stats", free: true, pro: true },
+    { label: "Correlation matrix", free: true, pro: true },
+    { label: "Charts & visualizations", free: true, pro: true },
+    { label: "Data cleaning tools", free: true, pro: true },
+    { label: "Compare mode (side-by-side)", free: false, pro: true },
+  ]},
+  { category: "Machine Learning", rows: [
+    { label: "Random Forest", free: true, pro: true },
+    { label: "Logistic Regression", free: true, pro: true },
+    { label: "XGBoost", free: false, pro: true },
+    { label: "SVM", free: false, pro: true },
+    { label: "Models per session", free: "1", pro: "4" },
+    { label: "Model memory (active TTL)", free: "10 min", pro: "60 min" },
+    { label: "Model download (.pkl)", free: false, pro: true },
+  ]},
+  { category: "Forecasting", rows: [
+    { label: "Time-series forecasting (Holt-Winters)", free: false, pro: true },
+    { label: "Automatic seasonality detection", free: false, pro: true },
+    { label: "Forecast confidence bands", free: false, pro: true },
+    { label: "Forecast export (CSV/PDF)", free: false, pro: true },
+  ]},
+  { category: "Predictions & Scoring", rows: [
+    { label: "Score current dataset", free: true, pro: true },
+    { label: "Score new file upload", free: false, pro: true },
+  ]},
+  { category: "Exports & Reports", rows: [
+    { label: "Python code export", free: true, pro: true },
+    { label: "Generate report (preview)", free: true, pro: true },
+    { label: "Download report (HTML/CSV/JSON/PDF)", free: false, pro: true },
+    { label: "Jupyter notebooks (.ipynb)", free: false, pro: true },
+  ]},
+  { category: "Sessions & Storage", rows: [
+    { label: "Session duration", free: "90 min", pro: "12 hours" },
+    { label: "Cloud backup", free: "Files + workspace metadata", pro: "Files + workspace metadata + trained models" },
+    { label: "AI insights queries/day", free: "15/day", pro: "Unlimited" },
+  ]},
+];
+
+function compareCell(value, isPro) {
+  if (value === true) {
+    const color = isPro ? "var(--accent2)" : "var(--accent3)";
+    return `<span style="color:${color};display:inline-flex;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>`;
+  }
+  if (value === false) {
+    return `<span style="color:var(--text3);opacity:0.4;display:inline-flex;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></span>`;
+  }
+  const color = isPro ? "var(--accent2)" : "var(--text2)";
+  const weight = isPro ? "600" : "400";
+  return `<span style="font-size:12.5px;font-family:'DM Mono',monospace;color:${color};font-weight:${weight};">${value}</span>`;
+}
+
+function renderCompareTable() {
+  const body = document.getElementById('pricing-compare-body');
+  if (!body || body.dataset.rendered) return;
+  let html = '';
+  PRICING_FEATURES.forEach((group, gi) => {
+    html += `<div style="padding:10px 20px 6px;font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.08em;background:rgba(108,99,255,0.04);border-bottom:1px solid var(--border);">${group.category}</div>`;
+    group.rows.forEach((row, ri) => {
+      const isLast = gi === PRICING_FEATURES.length - 1 && ri === group.rows.length - 1;
+      html += `<div style="display:grid;grid-template-columns:1fr 90px 90px;padding:10px 20px;${isLast ? '' : 'border-bottom:1px solid var(--border);'}align-items:center;">
+        <span style="font-size:13px;color:var(--text2);">${row.label}</span>
+        <div style="display:flex;justify-content:center;">${compareCell(row.free, false)}</div>
+        <div style="display:flex;justify-content:center;">${compareCell(row.pro, true)}</div>
+      </div>`;
+    });
+  });
+  body.innerHTML = html;
+  body.dataset.rendered = "1";
+}
+
+function toggleCompareTable() {
+  const el = document.getElementById('pricing-compare-table');
+  const btn = document.getElementById('pricing-compare-toggle');
+  renderCompareTable();
+  const isOpen = el.style.maxHeight && el.style.maxHeight !== '0px';
+  el.style.maxHeight = isOpen ? '0px' : '2000px';
+  el.style.opacity = isOpen ? '0' : '1';
+  el.style.marginTop = isOpen ? '0px' : '24px';
+  btn.querySelector('.chev').style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+  btn.querySelector('.label').textContent = isOpen ? 'See full feature comparison' : 'Hide feature comparison';
+}
+
 const observer = new IntersectionObserver((entries) => {
   entries.forEach((entry, i) => {
     if (entry.isIntersecting) {
