@@ -39,6 +39,12 @@ db = firestore.client()
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
+# How long a Pro user keeps access after a renewal charge fails, before the
+# lazy-expiry check (see utils/auth.py) downgrades them to free. Gives
+# Flutterwave's own retry attempts — and the user updating a declined card —
+# a real window, instead of dropping access the moment one charge fails.
+GRACE_PERIOD_DAYS = 2
+
 
 @router.post("/payments/create-checkout")
 async def create_checkout(authorization: str = Header(None)):
@@ -168,6 +174,7 @@ async def get_subscription(authorization: str = Header(None)):
     plan = (user_data.get("plan") or "free").lower()
     period_end = user_data.get("current_period_end")
     subscription_status = user_data.get("subscription_status")
+    grace_period_end = user_data.get("grace_period_end")
 
     history_docs = (
         db.collection("payments")
@@ -193,6 +200,7 @@ async def get_subscription(authorization: str = Header(None)):
         "subscription_status": subscription_status,
         "subscription_id": user_data.get("subscription_id"),
         "current_period_end": period_end.isoformat() if period_end else None,
+        "grace_period_end": grace_period_end.isoformat() if grace_period_end else None,
         "payment_history": history,
     }
 
@@ -308,6 +316,49 @@ async def flutterwave_webhook(request: Request):
     if is_renewal:
         if not verified_ok:
             logger.warning(f"Renewal verification failed for {tx_ref}: {verification}")
+
+            fail_email = (v_data.get("customer") or {}).get("email") or (data.get("customer") or {}).get("email")
+            fail_user_id = _find_user_id_by_email(fail_email)
+
+            if fail_user_id:
+                from datetime import datetime, timedelta, timezone
+                grace_end = datetime.now(timezone.utc) + timedelta(days=GRACE_PERIOD_DAYS)
+
+                # Log the failed charge in payment history, same shape as a
+                # successful renewal record, just with status "failed" — so
+                # it shows up on the billing page instead of vanishing.
+                db.collection("payments").document(tx_ref).set({
+                    "user_id": fail_user_id,
+                    "email": fail_email,
+                    "tx_ref": tx_ref,
+                    "amount": v_data.get("amount", 12),
+                    "currency": v_data.get("currency", "USD"),
+                    "status": "failed",
+                    "payment_type": "renewal",
+                    "flutterwave_transaction_id": transaction_id,
+                    "created_at": firestore.SERVER_TIMESTAMP,
+                    "updated_at": firestore.SERVER_TIMESTAMP,
+                })
+
+                # Don't downgrade yet. apply_lazy_plan_expiry() checks
+                # grace_period_end on the user's next authenticated request
+                # and only downgrades to free once that deadline passes with
+                # no successful renewal in between.
+                db.collection("users").document(fail_user_id).set(
+                    {
+                        "subscription_status": "payment_failed",
+                        "payment_failed_at": firestore.SERVER_TIMESTAMP,
+                        "grace_period_end": grace_end,
+                    },
+                    merge=True,
+                )
+                logger.warning(
+                    f"Renewal charge failed for user {fail_user_id} ({tx_ref}) — "
+                    f"grace period until {grace_end.isoformat()}"
+                )
+            else:
+                logger.warning(f"Failed renewal charge {tx_ref} matched no user (email={fail_email})")
+
             return {"status": "verification_failed"}
 
         email = (v_data.get("customer") or {}).get("email") or (data.get("customer") or {}).get("email")
@@ -337,6 +388,8 @@ async def flutterwave_webhook(request: Request):
                 "subscription_id": subscription_id,
                 "subscription_status": "active",
                 "current_period_end": _next_period_end(),
+                "payment_failed_at": firestore.DELETE_FIELD,
+                "grace_period_end": firestore.DELETE_FIELD,
             },
             merge=True,
         )
@@ -373,6 +426,8 @@ async def flutterwave_webhook(request: Request):
             "subscription_id": subscription_id,
             "subscription_status": "active",
             "current_period_end": _next_period_end(),
+            "payment_failed_at": firestore.DELETE_FIELD,
+            "grace_period_end": firestore.DELETE_FIELD,
         },
         merge=True,
     )

@@ -109,30 +109,59 @@ def apply_lazy_plan_expiry(uid: str, data: dict) -> dict:
     one get_user_plan() already does.
 
     Distinguishes "cancelled" (user turned off auto-renewal, then their paid
-    period elapsed) from "expired" (still marked active/renewing but the
-    period passed anyway, e.g. a failed renewal charge) purely for billing-
-    history clarity — both cases downgrade plan to free.
+    period elapsed), "expired" (a renewal charge failed and the grace period
+    ran out), and "expired" for the missed-webhook fallback below — purely
+    for billing-history clarity — all cases downgrade plan to free.
+
+    A failed renewal charge (routers/payments.py webhook) sets
+    subscription_status="payment_failed" plus a grace_period_end a few days
+    out, instead of downgrading immediately — this function is what actually
+    enforces that deadline, on whatever authenticated request the user
+    happens to make after it passes. current_period_end is deliberately
+    ignored while payment_failed is set, since it's already in the past by
+    the time a renewal fails; grace_period_end is the deadline that matters
+    in that state.
 
     `data` is the user's Firestore doc dict (or {} if it doesn't exist yet).
     Returns the dict, with plan/subscription_status corrected if a downgrade
     was applied.
     """
     plan = (data.get("plan") or "free").lower()
-    period_end = data.get("current_period_end")
     subscription_status = data.get("subscription_status")
 
-    if plan == "pro" and period_end is not None:
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
-        expires_at = period_end if period_end.tzinfo else period_end.replace(tzinfo=timezone.utc)
-        if expires_at < now:
-            new_status = "cancelled" if subscription_status == "cancelling" else "expired"
+    if plan != "pro":
+        return data
+
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+
+    def _aware(dt):
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+    if subscription_status == "payment_failed":
+        grace_end = data.get("grace_period_end")
+        if grace_end is not None and _aware(grace_end) < now:
             _get_db().collection("users").document(uid).set(
-                {"plan": "free", "subscription_status": new_status}, merge=True
+                {"plan": "free", "subscription_status": "expired"}, merge=True
             )
             data = dict(data)
             data["plan"] = "free"
-            data["subscription_status"] = new_status
+            data["subscription_status"] = "expired"
+        return data
+
+    # Fallback safety net: no payment_failed marker on record, but the paid
+    # period has still elapsed anyway (e.g. Flutterwave's webhook never
+    # arrived at all). Self-heals on the next authenticated request rather
+    # than relying on the webhook alone.
+    period_end = data.get("current_period_end")
+    if period_end is not None and _aware(period_end) < now:
+        new_status = "cancelled" if subscription_status == "cancelling" else "expired"
+        _get_db().collection("users").document(uid).set(
+            {"plan": "free", "subscription_status": new_status}, merge=True
+        )
+        data = dict(data)
+        data["plan"] = "free"
+        data["subscription_status"] = new_status
 
     return data
 

@@ -119,6 +119,7 @@ export default function PageBilling() {
 
   const isPro = currentPlan === "pro";
   const isCancelling = sub?.subscription_status === "cancelling";
+  const isPaymentFailed = sub?.subscription_status === "payment_failed";
   const history = sub?.payment_history || [];
 
   return (
@@ -156,20 +157,45 @@ export default function PageBilling() {
           <div style={{ marginTop: 16, fontSize: 12.5, color: "var(--red, #e5484d)" }}>{loadError}</div>
         ) : isPro ? (
           <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+            {isPaymentFailed && (
+              <div style={{
+                display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5,
+                color: "#f59e0b", background: "rgba(245,158,11,0.1)",
+                border: "1px solid rgba(245,158,11,0.3)", borderRadius: 8, padding: "10px 12px",
+              }}>
+                <IcoAlert size={14} />
+                <span>
+                  Your last payment didn't go through. Update your card before{" "}
+                  <strong>{formatDate(sub?.grace_period_end)}</strong> to keep Pro access —
+                  we'll keep retrying the card on file until then.
+                </span>
+              </div>
+            )}
             <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text2)" }}>
               <IcoCalendar size={14} />
               {isCancelling
                 ? <>Pro access ends on <strong style={{ color: "var(--text)" }}>{formatDate(sub?.current_period_end)}</strong> — auto-renewal is off</>
-                : <>Next billing date: <strong style={{ color: "var(--text)" }}>{formatDate(sub?.current_period_end)}</strong></>}
+                : isPaymentFailed
+                  ? <>Renewal was due {formatDate(sub?.current_period_end)}</>
+                  : <>Next billing date: <strong style={{ color: "var(--text)" }}>{formatDate(sub?.current_period_end)}</strong></>}
             </div>
             <div style={{ fontSize: 12, color: "var(--text3)" }}>
               $12/month, billed automatically to the card on file
-              {isCancelling ? "" : " — no need to re-subscribe each period."}
+              {isCancelling || isPaymentFailed ? "" : " — no need to re-subscribe each period."}
             </div>
           </div>
         ) : (
-          <div style={{ marginTop: 16, fontSize: 13, color: "var(--text2)" }}>
-            You're on the free plan. Upgrade to Pro for higher limits and unlimited AI queries.
+          <div style={{ marginTop: 16 }}>
+            {(sub?.subscription_status === "expired" || sub?.subscription_status === "cancelled") && sub?.current_period_end && (
+              <div style={{ fontSize: 12.5, color: "var(--text3)", marginBottom: 10 }}>
+                Your Pro subscription ended on{" "}
+                <strong style={{ color: "var(--text)" }}>{formatDate(sub.current_period_end)}</strong>.
+                {" "}Upgrade again to restore access.
+              </div>
+            )}
+            <div style={{ fontSize: 13, color: "var(--text2)" }}>
+              You're on the free plan. Upgrade to Pro for higher limits and unlimited AI queries.
+            </div>
           </div>
         )}
 
