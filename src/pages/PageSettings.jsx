@@ -295,7 +295,7 @@ export default function PageSettings() {
             <FieldRow label="AI model" hint="Served via Groq — fastest open-source inference available">
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ padding: "4px 10px", borderRadius: 6, background: "var(--accent-dim)", border: "1px solid rgba(108,99,255,0.25)", fontSize: 11.5, fontFamily: "'DM Mono', monospace", color: "var(--accent2)" }}>
-                  llama-3.3-70b-versatile
+                  openai/gpt-oss-120b
                 </div>
               </div>
             </FieldRow>
@@ -454,7 +454,7 @@ export default function PageSettings() {
             {[
               { label: "API key storage", value: "Browser only" },
               { label: "Version",         value: "0.9.0-beta" },
-              { label: "AI Model", value: "llama-3.3-70b" },
+              { label: "AI Model", value: "gpt-oss-120b" },
             ].map(({ label, value }) => (
               <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--border)", fontSize: 12 }}>
                 <span style={{ color: "var(--text3)" }}>{label}</span>

@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 # Shared GROQ client — initialised at app startup in lifespan()
 GROQ_CLIENT = None
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 # ================= CUSTOM JSON ENCODER =================
 class NaNEncoder(json.JSONEncoder):
