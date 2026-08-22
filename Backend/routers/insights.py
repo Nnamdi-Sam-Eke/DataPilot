@@ -294,7 +294,10 @@ async def get_insights(payload: dict, authorization: str = Header(None)):
         from main import GROQ_CLIENT, GROQ_MODEL
     except Exception:
         GROQ_CLIENT = None
-        GROQ_MODEL = get_env("GROQ_MODEL", "llama-3.3-70b-versatile")
+        # llama-3.3-70b-versatile was decommissioned by Groq (deprecated
+        # 2026-06-17, shut off 2026-08-16) — this fallback default now points
+        # to Groq's recommended replacement, which still supports tool calling.
+        GROQ_MODEL = get_env("GROQ_MODEL", "openai/gpt-oss-120b")
 
     if not GROQ_CLIENT:
         return {"error": "AI service is not configured on the server."}
@@ -819,5 +822,12 @@ async def get_insights(payload: dict, authorization: str = Header(None)):
 
         if "rate" in err and "limit" in err:
             return {"error": "AI service rate limit hit. Try again shortly."}
+
+        # Surfaces model retirements (e.g. Groq decommissioning a model) as a
+        # distinct, actionable error instead of the generic catch-all below,
+        # so this doesn't silently reappear the next time a model is retired.
+        if "decommission" in err or "model_not_found" in err or ("model" in err and "not supported" in err):
+            logger.error(f"AI model appears to be decommissioned/unsupported: {err}")
+            return {"error": "AI model needs updating on our end. We're on it — try again shortly."}
 
         return {"error": "AI request failed. Please try again."}
